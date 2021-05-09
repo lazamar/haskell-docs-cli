@@ -1,0 +1,86 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.33.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 2a5133b95dd6ba71d452a55299620089a1c1600a5451449bfee65f38d42f0fad
+
+name:           hoogle-cli
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/githubuser/hoogle-cli#readme>
+homepage:       https://github.com/githubuser/hoogle-cli#readme
+bug-reports:    https://github.com/githubuser/hoogle-cli/issues
+author:         Author name here
+maintainer:     example@example.com
+copyright:      2021 Author name here
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/githubuser/hoogle-cli
+
+library
+  exposed-modules:
+      Lib
+  other-modules:
+      Paths_hoogle_cli
+  hs-source-dirs:
+      src
+  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , hoogle
+    , http-client
+    , http-client-tls
+    , optparse-applicative
+    , text
+  default-language: Haskell2010
+
+executable hoogle-cli-exe
+  main-is: Main.hs
+  other-modules:
+      Paths_hoogle_cli
+  hs-source-dirs:
+      app
+  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , hoogle
+    , hoogle-cli
+    , http-client
+    , http-client-tls
+    , optparse-applicative
+    , text
+  default-language: Haskell2010
+
+test-suite hoogle-cli-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_hoogle_cli
+  hs-source-dirs:
+      test
+  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      aeson
+    , base >=4.7 && <5
+    , bytestring
+    , hoogle
+    , hoogle-cli
+    , http-client
+    , http-client-tls
+    , optparse-applicative
+    , text
+  default-language: Haskell2010
