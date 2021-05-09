@@ -11,12 +11,15 @@ import qualified Hoogle
 import Data.ByteString (ByteString)
 import Data.Either (either)
 import Control.Monad.IO.Class (liftIO)
+import Text.Read (readMaybe)
+import Data.Maybe (catMaybes)
+import Data.List (intersperse)
 
 import qualified Data.Aeson as Aeson
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
-import qualified Network.HTTP.Client as HTTP
-import qualified Network.HTTP.Client.TLS as HTTP (tlsManagerSettings)
+import qualified Network.HTTP.Client as Http
+import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
 import qualified Options.Applicative as O
 import qualified System.Console.Haskeline as CLI
 
@@ -56,38 +59,64 @@ removeHtml = symbols . tags False
     symbols ('&':'a':'m':'p':';':xs) = '<':symbols xs
     symbols (x:xs) = x:symbols xs
 
-runSearch :: HTTP.Manager -> Options -> String -> IO [Hoogle.Target]
+runSearch :: Http.Manager -> Options -> String -> IO [Hoogle.Target]
 runSearch manager Options{..} term = do
-  req <- HTTP.parseRequest "https://hoogle.haskell.org"
-    <&> HTTP.setQueryString
+  req <- Http.parseRequest "https://hoogle.haskell.org"
+    <&> Http.setQueryString
       [ ("mode", Just "json")
       , ("start", Just "1")
       , ("count", Just $ bs $ show count)
       , ("hoogle", Just $ bs term)
       ]
-  res <- HTTP.httpLbs req manager
-  either error return $ Aeson.eitherDecode (HTTP.responseBody res)
+  res <- Http.httpLbs req manager
+  either error return $ Aeson.eitherDecode (Http.responseBody res)
   where
     bs :: String -> ByteString
     bs = Text.encodeUtf8 . Text.pack
 
-prettyAnswers :: [Hoogle.Target] -> String
-prettyAnswers = unlines . map (removeHtml . Hoogle.targetItem)
+viewCompact :: Hoogle.Target -> String
+viewCompact = removeHtml . Hoogle.targetItem
+
+viewFull :: Hoogle.Target -> String
+viewFull target
+  = unlines
+  $ map removeHtml
+  $ intersperse ""
+  $ filter (not . null)
+  [ Hoogle.targetItem target
+  , maybe "" fst $ Hoogle.targetPackage target
+  , Hoogle.targetDocs target
+  , Hoogle.targetURL target
+  ]
+
+data ShellState = ShellState
+  { lastResults :: [Hoogle.Target]
+  }
 
 someFunc :: IO ()
 someFunc = do
   options <- O.execParser cliOptions
-  manager <- HTTP.newManager HTTP.tlsManagerSettings
-  let loop :: CLI.InputT IO ()
-      loop = do
+  manager <- Http.newManager Http.tlsManagerSettings
+  let loop :: ShellState -> CLI.InputT IO ()
+      loop state = do
         minput <- CLI.getInputLine "hoogle> "
         case minput of
           Nothing -> return ()
           Just "q" -> return ()
           Just "quit" -> return ()
-          Just term -> do
-            res <- liftIO $ runSearch manager options term
-            liftIO $ putStrLn $ prettyAnswers res
-            loop
-  CLI.runInputT CLI.defaultSettings loop
+          Just term
+            | Just n <- readMaybe term
+            , x:_ <- drop (n - 1) (lastResults state) -> do
+              liftIO $ putStrLn $ viewFull x
+              loop state
+            | otherwise -> do
+              res <- liftIO $ runSearch manager options term
+              let s = state { lastResults = res }
+              liftIO $ putStrLn $ unlines $ numbered $ map viewCompact res
+              loop s
+  CLI.runInputT CLI.defaultSettings $ loop $ ShellState []
 
+numbered :: [String] -> [String]
+numbered = zipWith f [1..]
+  where
+    f n s = show n <> ". " <> s
