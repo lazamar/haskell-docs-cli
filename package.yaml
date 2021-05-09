@@ -28,6 +28,7 @@ dependencies:
 - optparse-applicative
 - text
 - bytestring
+- haskeline
 
 default-extensions:
 - ApplicativeDo
