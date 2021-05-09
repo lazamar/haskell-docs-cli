@@ -7,7 +7,7 @@ module Lib
 
 import Data.Functor ((<&>))
 
-import Hoogle (Target)
+import qualified Hoogle
 import Data.ByteString (ByteString)
 
 import qualified Data.Aeson as Aeson
@@ -37,6 +37,22 @@ options = O.info parser $ O.header " \
           <> O.help "String to search for"
           <> O.value 20)
 
+removeHtml :: String -> String
+removeHtml = symbols . tags False
+  where
+    -- remove html tags
+    tags _ [] = []
+    tags False ('<':xs) = tags True xs
+    tags True  ('>':xs) = tags False xs
+    tags False (x:xs)   = x:tags False xs
+    tags True  (x:xs)   = tags True xs
+
+    -- replace html symbols
+    symbols [] = []
+    symbols ('&':'g':'t':';':xs) = '>':symbols xs
+    symbols ('&':'l':'t':';':xs) = '<':symbols xs
+    symbols (x:xs) = x:symbols xs
+
 someFunc :: IO ()
 someFunc = do
   Options{..} <- O.execParser options
@@ -49,8 +65,8 @@ someFunc = do
       , ("hoogle", Just $ bs search)
       ]
   res <- HTTP.httpLbs req manager
-  let targets = Aeson.decode (HTTP.responseBody res) :: Maybe [Target]
-  print targets
+  let Just targets = Aeson.decode (HTTP.responseBody res) :: Maybe [Hoogle.Target]
+  putStrLn $ unlines $ map (removeHtml . Hoogle.targetItem) targets
 
 bs :: String -> ByteString
 bs = Text.encodeUtf8 . Text.pack
