@@ -29,6 +29,7 @@ dependencies:
 - text
 - bytestring
 - haskeline
+- extra
 
 default-extensions:
 - ApplicativeDo

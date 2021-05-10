@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8701cd54ccd22667e0ae0fc5cbc5f63bdf4565355d7ed16cbbddf7db9a3da4d2
+-- hash: bd4174e8f9259144602c35c0f7437f05eb4ad32089f444b11413fb2741cb403a
 
 name:           hoogle-cli
 version:        0.1.0.0
@@ -37,6 +37,7 @@ library
       aeson
     , base >=4.7 && <5
     , bytestring
+    , extra
     , haskeline
     , hoogle
     , http-client
@@ -57,6 +58,7 @@ executable hoogle-cli-exe
       aeson
     , base >=4.7 && <5
     , bytestring
+    , extra
     , haskeline
     , hoogle
     , hoogle-cli
@@ -79,6 +81,7 @@ test-suite hoogle-cli-test
       aeson
     , base >=4.7 && <5
     , bytestring
+    , extra
     , haskeline
     , hoogle
     , hoogle-cli

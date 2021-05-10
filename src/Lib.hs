@@ -10,6 +10,7 @@ import Data.Functor ((<&>))
 import qualified Hoogle
 import Data.ByteString (ByteString)
 import Data.Either (either)
+import Data.List.Extra (unescapeHTML)
 import Control.Monad.IO.Class (liftIO)
 import Text.Read (readMaybe)
 import Data.Maybe (catMaybes)
@@ -50,22 +51,16 @@ cliOptions = O.info parser $ O.header " \
           <> O.help "How many results to show per page"
           <> O.value defaultPageSize)
 
-removeHtml :: String -> String
-removeHtml = symbols . tags False
+unHTML :: String -> String
+unHTML = unescapeHTML . removeTags False
   where
     -- remove html tags
-    tags _ [] = []
-    tags False ('<':xs) = tags True xs
-    tags True  ('>':xs) = tags False xs
-    tags False (x:xs)   = x:tags False xs
-    tags True  (x:xs)   = tags True xs
+    removeTags _ [] = []
+    removeTags False ('<':xs) = removeTags True xs
+    removeTags True  ('>':xs) = removeTags False xs
+    removeTags False (x:xs)   = x:removeTags False xs
+    removeTags True  (x:xs)   = removeTags True xs
 
-    -- replace html symbols
-    symbols [] = []
-    symbols ('&':'g':'t':';':xs) = '>':symbols xs
-    symbols ('&':'l':'t':';':xs) = '<':symbols xs
-    symbols ('&':'a':'m':'p':';':xs) = '<':symbols xs
-    symbols (x:xs) = x:symbols xs
 
 runSearch :: Http.Manager -> Options -> String -> IO [Hoogle.Target]
 runSearch manager Options{..} term = do
@@ -82,7 +77,7 @@ runSearch manager Options{..} term = do
     bs = Text.encodeUtf8 . Text.pack
 
 viewCompact :: Hoogle.Target -> String
-viewCompact target = concatMap removeHtml $ catMaybes
+viewCompact target = concatMap unHTML $ catMaybes
   [ Just $ Hoogle.targetItem target
   , moduleName
   ]
@@ -95,7 +90,7 @@ viewCompact target = concatMap removeHtml $ catMaybes
 viewFull :: Hoogle.Target -> String
 viewFull target
   = unlines
-  $ map removeHtml
+  $ map unHTML
   $ intersperse ""
   $ filter (not . null)
   [ Hoogle.targetItem target
@@ -147,7 +142,7 @@ someFunc = do
                   url = sourceUrl target
               req <- Http.parseRequest url
               res <- Http.httpLbs req manager
-              putStrLn $ removeHtml $ LText.unpack $ LText.decodeUtf8 $ Http.responseBody res
+              putStrLn $ unHTML $ LText.unpack $ LText.decodeUtf8 $ Http.responseBody res
             loop state
 
           Just term
