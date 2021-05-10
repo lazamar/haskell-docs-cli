@@ -1,10 +1,12 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase #-}
 module Lib where
 
+import Debug.Trace
 import Data.Functor ((<&>))
-
+import Data.Bifunctor (bimap)
 import Data.ByteString (ByteString)
 import Data.Either (either)
 import Data.List.Extra (unescapeHTML)
@@ -16,8 +18,12 @@ import Data.Char (chr, ord)
 import Data.Set (Set)
 import Data.Text (Text)
 import System.IO (hPutStr)
-import System.IO.Temp (withSystemTempFile)
-
+import System.IO.Temp
+  ( withSystemTempDirectory
+  , withSystemTempFile
+  , withTempFile
+  , withTempDirectory
+  , getCanonicalTemporaryDirectory)
 import qualified System.Process as Process
 import qualified Hoogle
 import qualified Data.ByteString.Lazy as LB
@@ -26,6 +32,7 @@ import qualified Text.XML as XML
 import qualified Text.HTML.DOM as HTML
 import qualified Data.Set as Set
 import qualified Data.Aeson as Aeson
+import qualified Data.Text.IO as Text (hPutStr)
 import qualified Data.Text as Text
 import qualified Data.Text.Lazy as LText
 import qualified Data.Text.Encoding as Text
@@ -135,12 +142,12 @@ someFunc = do
             | Just n <- readMaybe [x] -> do
             liftIO $ do
               let target = lastResults state !! (n - 1)
-              (filename, url) <- sourceUrl manager target
+              url <- sourceUrl manager target
               res <- get manager url
-              let content = unHTML $ LText.unpack $ LText.decodeUtf8 res
-              withSystemTempFile filename $ \path handle -> do
-                hPutStr handle content
-                Process.callCommand $ "vim " <> path
+              let (filename, content) = fileInfo res
+              withSystemTempFile filename $ \fullpath handle -> do
+                Text.hPutStr handle content
+                Process.callCommand $ "nvim " <> fullpath
             loop state
 
           Just term
@@ -171,6 +178,17 @@ someFunc = do
 
   CLI.runInputT CLI.defaultSettings $ loop initialState
 
+withTempPath :: String -> (String -> IO a) -> IO a
+withTempPath path f = do
+  root <- getCanonicalTemporaryDirectory
+  go root $ filter (not . null) $ splitOn '/' path
+  where
+    go parent [] = f parent
+    go parent (x:xs) =
+      withTempDirectory parent x $ \p -> go p xs
+
+
+
 divider :: IO ()
 divider = putStrLn $ replicate 50 '='
 
@@ -191,17 +209,29 @@ type Url = String
 
 type FileName = String
 
+type FileContent = Text
+
 type Anchor = Text
 
 newtype RelativeUrl = RelativeUrl Text
 
+fileInfo :: LB.ByteString -> (FileName, FileContent)
+fileInfo doc = head $ do
+  let page = HTML.parseLBS doc
+      root = XML.documentRoot page
+  head_ <- filter (is "head" . tag) $ children root
+  title <- filter (is "title" . tag) $ children head_
+  let filename = Text.unpack $ Text.replace "/" "." $ innerText title
+  body <- filter (is "body" . tag) $ children root
+  return (filename, innerText body)
+
 -- | Get URL for source file for a target
-sourceUrl :: Http.Manager -> Hoogle.Target -> IO (FileName, Url)
+sourceUrl :: Http.Manager -> Hoogle.Target -> IO Url
 sourceUrl manager target = do
   docs <- get manager $ dropAnchor docsUrl
-  let links = sourceLinks (HTML.parseLBS docs) :: [(Anchor, RelativeUrl)]
+  let links = sourceLinks (HTML.parseLBS docs)
       url = toAbsoluteUrl $ fromJust $ lookup anchor links
-  return (filename url, url)
+  return url
   where
     docsUrl = Hoogle.targetURL target
     anchor = Text.pack $ takeAnchor $ Hoogle.targetURL target
@@ -213,51 +243,60 @@ sourceUrl manager target = do
 
     toAbsoluteUrl (RelativeUrl url) = parent docsUrl <> "/" <> Text.unpack url
 
-    hsExtension = (<> ".hs") . takeWhile (/= '.')
-
-    lastPathComponent = reverse . takeWhile (/= '/') . reverse
-
-    filename = hsExtension . lastPathComponent . dropAnchor
-
 sourceLinks :: XML.Document -> [(Anchor, RelativeUrl)]
-sourceLinks root = do
-  body       <- filter (is "body" . tag) $ children $ XML.documentRoot root
+sourceLinks doc = do
+  let root = XML.documentRoot doc
+  body       <- filter (is "body" . tag) $ children root
   content    <- filter (is "content" . id_) $ children body
   interface  <- filter (is "interface" . id_) $ children content
   definition <- filter (is "top" . class_) $ children interface
 
   signature  <- filter (is "src" . class_) $ children definition
-  sourceUrl  <- map (attr "href") . filter (is ["Source"] . innerText)
+  sourceUrl  <- map (attr "href") . filter (is "Source" . innerText)
      $ children signature
   let constructors = filter (is "subs constructors" . class_) $ children definition
 
-  anchor <- foldMap (all anchors) (signature : constructors)
+  anchor <- foldMap anchors (signature : constructors)
   return (anchor, RelativeUrl sourceUrl)
   where
-    is a b = a == b
+    anchors el = f $ foldMap anchors (children el)
+      where
+        f = if isAnchor el then (id_ el :) else id
 
-    children element =
-      [ n | XML.NodeElement n <- XML.elementNodes element ]
+    isAnchor el =
+      class_ el == "def" &&
+      (Text.isPrefixOf "t:" (id_ el) || Text.isPrefixOf "v:" (id_ el))
 
-    tag = XML.nameLocalName . XML.elementName
 
-    id_ = attr "id"
+is :: Eq a => a -> a -> Bool
+is = (==)
 
-    class_ = attr "class"
+children :: XML.Element -> [XML.Element]
+children element =
+  [ n | XML.NodeElement n <- XML.elementNodes element ]
 
-    attr name =
-      fromMaybe ""
-      . Map.lookup (XML.Name name Nothing Nothing)
-      . XML.elementAttributes
+tag :: XML.Element -> Text
+tag = XML.nameLocalName . XML.elementName
 
-    innerText el = [ c | XML.NodeContent c <- XML.elementNodes el ]
+id_ :: XML.Element -> Text
+id_ = attr "id"
 
-    isAnchor x = Text.isPrefixOf "t:" x || Text.isPrefixOf "v:" x
+class_ :: XML.Element -> Text
+class_ = attr "class"
 
-    all f el = foldr (mappend . all f) (f el) (children el)
+attr :: Text -> XML.Element -> Text
+attr name =
+  fromMaybe ""
+  . Map.lookup (XML.Name name Nothing Nothing)
+  . XML.elementAttributes
 
-    anchors el =
-      if isAnchor (id_ el) && class_ el == "def"
-         then pure $ id_ el
-         else mempty
+innerText :: XML.Element -> Text
+innerText el = flip foldMap (XML.elementNodes el) $ \case
+  XML.NodeElement e -> innerText e
+  XML.NodeInstruction _ -> mempty
+  XML.NodeContent txt -> txt
+  XML.NodeComment _ -> mempty
+
+foldElement :: Monoid m => (XML.Element -> m) -> XML.Element -> m
+foldElement f el = foldr (mappend . foldElement f) (f el) (children el)
 
