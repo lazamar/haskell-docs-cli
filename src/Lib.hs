@@ -201,8 +201,7 @@ sourceUrl manager target = do
   docs <- get manager $ dropAnchor docsUrl
   let links = sourceLinks (HTML.parseLBS docs) :: [(Anchor, RelativeUrl)]
       url = toAbsoluteUrl $ fromJust $ lookup anchor links
-      filename = reverse $ takeWhile (/= '/') $ reverse url
-  return (filename, url)
+  return (filename url, url)
   where
     docsUrl = Hoogle.targetURL target
     anchor = Text.pack $ takeAnchor $ Hoogle.targetURL target
@@ -213,6 +212,12 @@ sourceUrl manager target = do
     parent = reverse . tail . dropWhile (/= '/') . reverse
 
     toAbsoluteUrl (RelativeUrl url) = parent docsUrl <> "/" <> Text.unpack url
+
+    hsExtension = (<> ".hs") . takeWhile (/= '.')
+
+    lastPathComponent = reverse . takeWhile (/= '/') . reverse
+
+    filename = hsExtension . lastPathComponent . dropAnchor
 
 sourceLinks :: XML.Document -> [(Anchor, RelativeUrl)]
 sourceLinks root = do
