@@ -146,6 +146,7 @@ someFunc = do
               liftIO
                 $ putStrLn
                 $ unlines
+                $ reverse
                 $ numbered
                 $ take (pageSize options)
                 $ map viewCompact res
