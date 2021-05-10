@@ -13,12 +13,14 @@ import Data.Either (either)
 import Control.Monad.IO.Class (liftIO)
 import Text.Read (readMaybe)
 import Data.Maybe (catMaybes)
-import Data.List (intersperse)
+import Data.List (intersperse, intercalate)
 import Data.Char (chr, ord)
 
 import qualified Data.Aeson as Aeson
 import qualified Data.Text as Text
+import qualified Data.Text.Lazy as LText
 import qualified Data.Text.Encoding as Text
+import qualified Data.Text.Lazy.Encoding as LText
 import qualified Network.HTTP.Client as Http
 import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
 import qualified Options.Applicative as O
@@ -37,9 +39,6 @@ cliOptions = O.info parser $ O.header " \
   \Hoogle is a Haskell API search engine, which allows you to search the Haskell libraries on Stackage by either function name, or by approximate type signature."
   where
     parser = Options
-      -- <$> O.strArgument
-      --     (O.metavar "SEARCH"
-      --     <> O.help "String to search for")
       <$> O.option O.auto
           (O.long "count"
           <> O.metavar "INT"
@@ -111,6 +110,25 @@ data ShellState = ShellState
   , lastShown :: Int
   }
 
+
+-- FIXME This is wrong. Will need to check Hackage's API to get the right URL
+sourceUrl :: Hoogle.Target -> String
+sourceUrl
+  = takeWhile (/= '#')
+  . intercalate "/"
+  . map toSource
+  . splitOn '/'
+  . Hoogle.targetURL
+  where
+    toSource "docs" = "docs/src"
+    toSource x = x
+
+splitOn :: Eq a => a -> [a] -> [[a]]
+splitOn _ [] = []
+splitOn x xs = y : splitOn x (drop 1 ys)
+  where
+    (y, ys) = break (== x) xs
+
 someFunc :: IO ()
 someFunc = do
   options <- O.execParser cliOptions
@@ -122,6 +140,16 @@ someFunc = do
           Nothing -> return ()
           Just "q" -> return ()
           Just "quit" -> return ()
+          Just (x:"source")
+            | Just n <- readMaybe [x] -> do
+            liftIO $ do
+              let target = lastResults state !! (n - 1)
+                  url = sourceUrl target
+              req <- Http.parseRequest url
+              res <- Http.httpLbs req manager
+              putStrLn $ removeHtml $ LText.unpack $ LText.decodeUtf8 $ Http.responseBody res
+            loop state
+
           Just term
             | Just n <- readMaybe term -> do
               details state (n - 1)
