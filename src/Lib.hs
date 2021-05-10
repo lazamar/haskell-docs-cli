@@ -10,13 +10,14 @@ import Data.Either (either)
 import Data.List.Extra (unescapeHTML)
 import Control.Monad.IO.Class (liftIO)
 import Text.Read (readMaybe)
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe, fromJust)
 import Data.List (intersperse, intercalate)
 import Data.Char (chr, ord)
 import Data.Set (Set)
 import Data.Text (Text)
 
 import qualified Hoogle
+import qualified Data.ByteString.Lazy as LB
 import qualified Data.Map.Strict as Map
 import qualified Text.XML as XML
 import qualified Text.HTML.DOM as HTML
@@ -110,18 +111,6 @@ data ShellState = ShellState
   }
 
 
--- FIXME This is wrong. Will need to check Hackage's API to get the right URL
-sourceUrl :: Hoogle.Target -> String
-sourceUrl
-  = takeWhile (/= '#')
-  . intercalate "/"
-  . map toSource
-  . splitOn '/'
-  . Hoogle.targetURL
-  where
-    toSource "docs" = "docs/src"
-    toSource x = x
-
 splitOn :: Eq a => a -> [a] -> [[a]]
 splitOn _ [] = []
 splitOn x xs = y : splitOn x (drop 1 ys)
@@ -143,10 +132,9 @@ someFunc = do
             | Just n <- readMaybe [x] -> do
             liftIO $ do
               let target = lastResults state !! (n - 1)
-                  url = sourceUrl target
-              req <- Http.parseRequest url
-              res <- Http.httpLbs req manager
-              putStrLn $ unHTML $ LText.unpack $ LText.decodeUtf8 $ Http.responseBody res
+              url <- sourceUrl manager target
+              res <- get manager url
+              putStrLn $ unHTML $ LText.unpack $ LText.decodeUtf8 res
             loop state
 
           Just term
@@ -184,14 +172,39 @@ numbered = zipWith f [1..]
   where
     f n s = show n <> ". " <> s
 
+get :: Http.Manager -> String -> IO LB.ByteString
+get manager url = do
+  req <- Http.parseRequest url
+  res <- Http.httpLbs req manager
+  return $ Http.responseBody res
+
 -- Haddock handling
 
-newtype RelativeUrl = RelativeUrl Text
+type Url = String
 
 type Anchor = Text
 
-sources :: XML.Document -> [(Anchor, RelativeUrl)]
-sources root = do
+newtype RelativeUrl = RelativeUrl Text
+
+-- | Get URL for source file for a target
+sourceUrl :: Http.Manager -> Hoogle.Target -> IO Url
+sourceUrl manager target = do
+  docs <- get manager $ dropAnchor docsUrl
+  let links = sourceLinks (HTML.parseLBS docs) :: [(Anchor, RelativeUrl)]
+  return $ toAbsoluteUrl $ fromJust $ lookup anchor links
+  where
+    docsUrl = Hoogle.targetURL target
+    anchor = Text.pack $ takeAnchor $ Hoogle.targetURL target
+
+    dropAnchor = takeWhile (/= '#')
+    takeAnchor = tail . dropWhile (/= '#')
+
+    parent = reverse . tail . dropWhile (/= '/') . reverse
+
+    toAbsoluteUrl (RelativeUrl url) = parent docsUrl <> "/" <> Text.unpack url
+
+sourceLinks :: XML.Document -> [(Anchor, RelativeUrl)]
+sourceLinks root = do
   body       <- filter (is "body" . tag) $ children $ XML.documentRoot root
   content    <- filter (is "content" . id_) $ children body
   interface  <- filter (is "interface" . id_) $ children content
