@@ -14,6 +14,7 @@ import Control.Monad.IO.Class (liftIO)
 import Text.Read (readMaybe)
 import Data.Maybe (catMaybes)
 import Data.List (intersperse)
+import Data.Char (chr, ord)
 
 import qualified Data.Aeson as Aeson
 import qualified Data.Text as Text
@@ -122,20 +123,24 @@ someFunc = do
           Just "q" -> return ()
           Just "quit" -> return ()
           Just term
-            | Just n <- readMaybe term
-            , x:_ <- drop (n - 1) (lastResults state) -> do
-              liftIO $ putStrLn $ viewFull x
+            | Just n <- readMaybe term -> do
+              details state (n - 1)
               loop state
             | otherwise -> do
               res <- liftIO $ runSearch manager options term
-              let s = state { lastResults = res, lastShown = pageSize options }
               liftIO
                 $ putStrLn
                 $ unlines
                 $ numbered
                 $ take (pageSize options)
                 $ map viewCompact res
-              loop s
+              loop state { lastResults = res, lastShown = pageSize options }
+
+      details :: ShellState -> Int -> CLI.InputT IO ()
+      details state ix = liftIO $ do
+        divider
+        putStrLn $ viewFull $ lastResults state !! ix
+        divider
 
       initialState = ShellState
         { lastResults = []
@@ -143,6 +148,9 @@ someFunc = do
         }
 
   CLI.runInputT CLI.defaultSettings $ loop initialState
+
+divider :: IO ()
+divider = putStrLn $ replicate 50 '='
 
 numbered :: [String] -> [String]
 numbered = zipWith f [1..]
