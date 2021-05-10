@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2f4f796eeba0c91a340d0947a7c6e0eb45be6610df2cd59d80d5b646f8a8f7bb
+-- hash: d62b231f5028dc20088686e339c5f85a4a4d5ff05cf108cd1cadaf6364cab5d7
 
 name:           hoogle-cli
 version:        0.1.0.0
@@ -45,6 +45,8 @@ library
     , http-client
     , http-client-tls
     , optparse-applicative
+    , process
+    , temporary
     , text
     , xml-conduit
   default-language: Haskell2010
@@ -70,6 +72,8 @@ executable hoogle-cli-exe
     , http-client
     , http-client-tls
     , optparse-applicative
+    , process
+    , temporary
     , text
     , xml-conduit
   default-language: Haskell2010
@@ -96,6 +100,8 @@ test-suite hoogle-cli-test
     , http-client
     , http-client-tls
     , optparse-applicative
+    , process
+    , temporary
     , text
     , xml-conduit
   default-language: Haskell2010

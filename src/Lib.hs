@@ -15,7 +15,10 @@ import Data.List (intersperse, intercalate)
 import Data.Char (chr, ord)
 import Data.Set (Set)
 import Data.Text (Text)
+import System.IO (hPutStr)
+import System.IO.Temp (withSystemTempFile)
 
+import qualified System.Process as Process
 import qualified Hoogle
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Map.Strict as Map
@@ -132,9 +135,12 @@ someFunc = do
             | Just n <- readMaybe [x] -> do
             liftIO $ do
               let target = lastResults state !! (n - 1)
-              url <- sourceUrl manager target
+              (filename, url) <- sourceUrl manager target
               res <- get manager url
-              putStrLn $ unHTML $ LText.unpack $ LText.decodeUtf8 res
+              let content = unHTML $ LText.unpack $ LText.decodeUtf8 res
+              withSystemTempFile filename $ \path handle -> do
+                hPutStr handle content
+                Process.callCommand $ "vim " <> path
             loop state
 
           Just term
@@ -183,16 +189,20 @@ get manager url = do
 
 type Url = String
 
+type FileName = String
+
 type Anchor = Text
 
 newtype RelativeUrl = RelativeUrl Text
 
 -- | Get URL for source file for a target
-sourceUrl :: Http.Manager -> Hoogle.Target -> IO Url
+sourceUrl :: Http.Manager -> Hoogle.Target -> IO (FileName, Url)
 sourceUrl manager target = do
   docs <- get manager $ dropAnchor docsUrl
   let links = sourceLinks (HTML.parseLBS docs) :: [(Anchor, RelativeUrl)]
-  return $ toAbsoluteUrl $ fromJust $ lookup anchor links
+      url = toAbsoluteUrl $ fromJust $ lookup anchor links
+      filename = reverse $ takeWhile (/= '/') $ reverse url
+  return (filename, url)
   where
     docsUrl = Hoogle.targetURL target
     anchor = Text.pack $ takeAnchor $ Hoogle.targetURL target

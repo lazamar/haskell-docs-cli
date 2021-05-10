@@ -33,6 +33,8 @@ dependencies:
 - html-conduit
 - xml-conduit
 - containers
+- process
+- temporary
 
 default-extensions:
 - ApplicativeDo
