@@ -1,22 +1,26 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-module Lib
-  ( someFunc
-  ) where
+module Lib where
 
 import Data.Functor ((<&>))
 
-import qualified Hoogle
 import Data.ByteString (ByteString)
 import Data.Either (either)
 import Data.List.Extra (unescapeHTML)
 import Control.Monad.IO.Class (liftIO)
 import Text.Read (readMaybe)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import Data.List (intersperse, intercalate)
 import Data.Char (chr, ord)
+import Data.Set (Set)
+import Data.Text (Text)
 
+import qualified Hoogle
+import qualified Data.Map.Strict as Map
+import qualified Text.XML as XML
+import qualified Text.HTML.DOM as HTML
+import qualified Data.Set as Set
 import qualified Data.Aeson as Aeson
 import qualified Data.Text as Text
 import qualified Data.Text.Lazy as LText
@@ -179,3 +183,52 @@ numbered :: [String] -> [String]
 numbered = zipWith f [1..]
   where
     f n s = show n <> ". " <> s
+
+-- Haddock handling
+
+newtype RelativeUrl = RelativeUrl Text
+
+type Anchor = Text
+
+sources :: XML.Document -> [(Anchor, RelativeUrl)]
+sources root = do
+  body       <- filter (is "body" . tag) $ children $ XML.documentRoot root
+  content    <- filter (is "content" . id_) $ children body
+  interface  <- filter (is "interface" . id_) $ children content
+  definition <- filter (is "top" . class_) $ children interface
+
+  signature  <- filter (is "src" . class_) $ children definition
+  sourceUrl  <- map (attr "href") . filter (is ["Source"] . innerText)
+     $ children signature
+  let constructors = filter (is "subs constructors" . class_) $ children definition
+
+  anchor <- foldMap (all anchors) (signature : constructors)
+  return (anchor, RelativeUrl sourceUrl)
+  where
+    is a b = a == b
+
+    children element =
+      [ n | XML.NodeElement n <- XML.elementNodes element ]
+
+    tag = XML.nameLocalName . XML.elementName
+
+    id_ = attr "id"
+
+    class_ = attr "class"
+
+    attr name =
+      fromMaybe ""
+      . Map.lookup (XML.Name name Nothing Nothing)
+      . XML.elementAttributes
+
+    innerText el = [ c | XML.NodeContent c <- XML.elementNodes el ]
+
+    isAnchor x = Text.isPrefixOf "t:" x || Text.isPrefixOf "v:" x
+
+    all f el = foldr (mappend . all f) (f el) (children el)
+
+    anchors el =
+      if isAnchor (id_ el) && class_ el == "def"
+         then pure $ id_ el
+         else mempty
+

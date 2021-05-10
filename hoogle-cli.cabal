@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: bd4174e8f9259144602c35c0f7437f05eb4ad32089f444b11413fb2741cb403a
+-- hash: 2f4f796eeba0c91a340d0947a7c6e0eb45be6610df2cd59d80d5b646f8a8f7bb
 
 name:           hoogle-cli
 version:        0.1.0.0
@@ -37,13 +37,16 @@ library
       aeson
     , base >=4.7 && <5
     , bytestring
+    , containers
     , extra
     , haskeline
     , hoogle
+    , html-conduit
     , http-client
     , http-client-tls
     , optparse-applicative
     , text
+    , xml-conduit
   default-language: Haskell2010
 
 executable hoogle-cli-exe
@@ -58,14 +61,17 @@ executable hoogle-cli-exe
       aeson
     , base >=4.7 && <5
     , bytestring
+    , containers
     , extra
     , haskeline
     , hoogle
     , hoogle-cli
+    , html-conduit
     , http-client
     , http-client-tls
     , optparse-applicative
     , text
+    , xml-conduit
   default-language: Haskell2010
 
 test-suite hoogle-cli-test
@@ -81,12 +87,15 @@ test-suite hoogle-cli-test
       aeson
     , base >=4.7 && <5
     , bytestring
+    , containers
     , extra
     , haskeline
     , hoogle
     , hoogle-cli
+    , html-conduit
     , http-client
     , http-client-tls
     , optparse-applicative
     , text
+    , xml-conduit
   default-language: Haskell2010
