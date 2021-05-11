@@ -192,16 +192,51 @@ fetch req = do
 -- Pretty printing
 -- ================================
 
+viewModule :: Hoogle.Target -> Maybe P.Doc
+viewModule target = do
+  mod <- fst <$> Hoogle.targetModule target
+  return $ P.magenta (P.text mod)
+
+viewPackage :: Hoogle.Target -> Maybe P.Doc
+viewPackage target = do
+  pkg <- fst <$> Hoogle.targetPackage target
+  return $ P.black (P.text pkg)
+
+viewItem :: Hoogle.Target -> P.Doc
+viewItem target = prettyHTML $ Hoogle.targetItem target
+
 viewCompact :: Hoogle.Target -> P.Doc
-viewCompact target = P.vsep $ map (P.text . unHTML) $ catMaybes
-  [ Just $ Hoogle.targetItem target
+viewCompact target = P.vsep
+  [ viewItem target
   , moduleName
   ]
   where
-    moduleName = do
-      pkg <- fst <$> Hoogle.targetPackage target
-      mod <- fst <$> Hoogle.targetModule target
-      return $ pkg ++ " " ++ mod
+    moduleName = fromMaybe mempty $ do
+      pkg <- viewPackage target
+      mod <- viewModule target
+      return $ pkg P.<+> mod
+
+prettyHTML :: String -> P.Doc
+prettyHTML item = unXMLElement doc
+  where
+    doc = XML.documentRoot $ HTML.parseLBS $ bs $ "<p>" <> item <> "</p>"
+    bs = LB.fromStrict . Text.encodeUtf8 . Text.pack
+    unXMLNode = \case
+      XML.NodeInstruction _ -> mempty
+      XML.NodeContent txt -> P.text $ unescapeHTML $ Text.unpack txt
+      XML.NodeComment _ -> mempty
+      XML.NodeElement e -> unXMLElement e
+    unXMLElement e = modifier e $ foldMap unXMLNode $ XML.elementNodes e
+    modifier e = tagModifier e . classModifier e
+    classModifier e = case class_ e of
+      "name" -> P.dullgreen
+      _ -> id
+    tagModifier e = case tag e of
+       "a" -> P.cyan
+       "tt" -> P.green
+       "pre" -> P.black
+       "b" -> P.bold
+       _ -> id
 
 viewFull :: Hoogle.Target -> P.Doc
 viewFull target = P.vsep
@@ -210,20 +245,14 @@ viewFull target = P.vsep
   , divider
   ]
   where
-    divider = P.text $ replicate 50 '='
-    content =
-      P.string
-      $ unlines
-      $ map unHTML
-      $ intersperse ""
-      $ filter (not . null)
-      [ Hoogle.targetItem target
-      , maybe "" fst $ Hoogle.targetPackage target
-      , maybe "" fst $ Hoogle.targetModule target
-      , Hoogle.targetDocs target
-      , Hoogle.targetURL target
+    divider = P.black $ P.text $ replicate 50 '='
+    content = P.vsep $ catMaybes
+      [ Just $ viewItem target
+      , viewPackage target
+      , viewModule target
+      , Just . prettyHTML $ Hoogle.targetDocs target
+      , Just . P.cyan . P.text $ Hoogle.targetURL target
       ]
-
 
 unHTML :: String -> String
 unHTML = unescapeHTML . removeTags False
@@ -238,7 +267,7 @@ unHTML = unescapeHTML . removeTags False
 numbered :: [P.Doc] -> [P.Doc]
 numbered = zipWith f [1..]
   where
-    f n s = P.fill 3 (P.int n <> P.text ".") P.<+> P.align s
+    f n s = P.fill 2 (P.blue $ P.int n) P.<+> P.align s
 
 -- ================================
 -- Haddock handling
