@@ -10,10 +10,11 @@ import Data.Bifunctor (bimap)
 import Data.ByteString (ByteString)
 import Data.Either (either)
 import Data.List.Extra (unescapeHTML)
+import Control.Monad (foldM)
 import Control.Monad.IO.Class (liftIO)
 import Text.Read (readMaybe)
 import Data.Maybe (catMaybes, fromMaybe, fromJust)
-import Data.List (intersperse, intercalate)
+import Data.List (intersperse, intercalate, foldl')
 import Data.Char (chr, ord)
 import Data.Set (Set)
 import Data.Text (Text)
@@ -142,12 +143,13 @@ someFunc = do
             | Just n <- readMaybe [x] -> do
             liftIO $ do
               let target = lastResults state !! (n - 1)
-              url <- sourceUrl manager target
+              (anchor, url) <- sourceUrl manager target
               res <- get manager url
-              let (filename, content) = fileInfo res
+              let (filename, mline, content) = fileInfo anchor res
+                  line = maybe "" (("+" <>) . show) mline
               withSystemTempFile filename $ \fullpath handle -> do
                 Text.hPutStr handle content
-                Process.callCommand $ "nvim " <> fullpath
+                Process.callCommand $ traceShowId $ unwords ["nvim ", fullpath, line]
             loop state
 
           Just term
@@ -215,33 +217,52 @@ type Anchor = Text
 
 newtype RelativeUrl = RelativeUrl Text
 
-fileInfo :: LB.ByteString -> (FileName, FileContent)
-fileInfo doc = head $ do
+fileInfo :: Anchor -> LB.ByteString -> (FileName, Maybe Int, FileContent)
+fileInfo anchor doc = head $ do
   let page = HTML.parseLBS doc
       root = XML.documentRoot page
   head_ <- filter (is "head" . tag) $ children root
   title <- filter (is "title" . tag) $ children head_
   let filename = Text.unpack $ Text.replace "/" "." $ innerText title
   body <- filter (is "body" . tag) $ children root
-  return (filename, innerText body)
+  return (filename, anchorLine anchor body, innerText body)
+
+-- | File line where the tag is
+anchorLine :: Anchor -> XML.Element -> Maybe Int
+anchorLine anchor
+  = either Just (const Nothing)
+  . anchorNodes 0
+  . XML.elementNodes
+  where
+    anchorNodes :: Int -> [XML.Node] -> Either Int Int
+    anchorNodes n = foldM anchorNode n
+
+    anchorNode :: Int -> XML.Node -> Either Int Int -- anchor line or total lines
+    anchorNode n = \case
+      XML.NodeInstruction _ -> Right n
+      XML.NodeContent txt -> Right $ n + Text.count "\n" txt
+      XML.NodeComment _ -> Right n
+      XML.NodeElement e ->
+        if attr "name" e == anchor
+          then Left n
+          else anchorNodes n (XML.elementNodes e)
 
 -- | Get URL for source file for a target
-sourceUrl :: Http.Manager -> Hoogle.Target -> IO Url
+sourceUrl :: Http.Manager -> Hoogle.Target -> IO (Anchor, Url)
 sourceUrl manager target = do
   docs <- get manager $ dropAnchor docsUrl
   let links = sourceLinks (HTML.parseLBS docs)
       url = toAbsoluteUrl $ fromJust $ lookup anchor links
-  return url
+  return (takeAnchor url, url)
   where
     docsUrl = Hoogle.targetURL target
-    anchor = Text.pack $ takeAnchor $ Hoogle.targetURL target
-
+    anchor = takeAnchor $ Hoogle.targetURL target
     dropAnchor = takeWhile (/= '#')
-    takeAnchor = tail . dropWhile (/= '#')
-
     parent = reverse . tail . dropWhile (/= '/') . reverse
-
     toAbsoluteUrl (RelativeUrl url) = parent docsUrl <> "/" <> Text.unpack url
+
+takeAnchor :: Url -> Anchor
+takeAnchor = Text.pack . tail . dropWhile (/= '#')
 
 sourceLinks :: XML.Document -> [(Anchor, RelativeUrl)]
 sourceLinks doc = do
@@ -266,7 +287,6 @@ sourceLinks doc = do
     isAnchor el =
       class_ el == "def" &&
       (Text.isPrefixOf "t:" (id_ el) || Text.isPrefixOf "v:" (id_ el))
-
 
 is :: Eq a => a -> a -> Bool
 is = (==)
