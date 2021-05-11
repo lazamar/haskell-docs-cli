@@ -51,6 +51,7 @@ import qualified System.Console.Haskeline as CLI
 import qualified System.Process as Process
 import qualified Text.HTML.DOM as HTML
 import qualified Text.XML as XML
+import qualified Text.PrettyPrint.ANSI.Leijen as P
 
 data Options = Options
   { count :: Int
@@ -86,17 +87,6 @@ cliOptions = O.info parser $ O.header " \
           <> O.help "How many results to show per page"
           <> O.value defaultPageSize)
 
-unHTML :: String -> String
-unHTML = unescapeHTML . removeTags False
-  where
-    -- remove html tags
-    removeTags _ [] = []
-    removeTags False ('<':xs) = removeTags True xs
-    removeTags True  ('>':xs) = removeTags False xs
-    removeTags False (x:xs)   = x:removeTags False xs
-    removeTags True  (x:xs)   = removeTags True xs
-
-
 runSearch :: String -> M [Hoogle.Target]
 runSearch term = do
   Options{..} <- State.gets sOptions
@@ -108,30 +98,6 @@ runSearch term = do
       ]
   res <- fetch req
   either error return $ Aeson.eitherDecode res
-
-viewCompact :: Hoogle.Target -> String
-viewCompact target = concatMap unHTML $ catMaybes
-  [ Just $ Hoogle.targetItem target
-  , moduleName
-  ]
-  where
-    moduleName = do
-      pkg <- fst <$> Hoogle.targetPackage target
-      mod <- fst <$> Hoogle.targetModule target
-      return $ "\n" ++ pkg ++ " " ++ mod
-
-viewFull :: Hoogle.Target -> String
-viewFull target
-  = unlines
-  $ map unHTML
-  $ intersperse ""
-  $ filter (not . null)
-  [ Hoogle.targetItem target
-  , maybe "" fst $ Hoogle.targetPackage target
-  , maybe "" fst $ Hoogle.targetModule target
-  , Hoogle.targetDocs target
-  , Hoogle.targetURL target
-  ]
 
 splitOn :: Eq a => a -> [a] -> [[a]]
 splitOn _ [] = []
@@ -174,21 +140,21 @@ loop = do
     Just term | Just n <- readMaybe term -> do
       results <- State.gets sLastResults
       liftIO $ do
-        divider
-        putStrLn $ viewFull $ results !! (n - 1)
-        divider
+        P.putDoc $ viewFull $ results !! (n - 1)
+        putStrLn ""
       loop
 
     Just term -> do
       options <- State.gets sOptions
       res <- runSearch term
-      liftIO
-        $ putStrLn
-        $ unlines
-        $ reverse
-        $ numbered
-        $ take (pageSize options)
-        $ map viewCompact res
+      liftIO $ do
+        P.putDoc
+          $ P.vsep
+          $ reverse
+          $ numbered
+          $ take (pageSize options)
+          $ map viewCompact res
+        putStrLn ""
       State.modify' $ \s -> s
           { sLastResults = res
           , sLastShown = pageSize options
@@ -203,14 +169,6 @@ withTempPath path f = do
     go parent [] = f parent
     go parent (x:xs) =
       withTempDirectory parent x $ \p -> go p xs
-
-divider :: IO ()
-divider = putStrLn $ replicate 50 '='
-
-numbered :: [String] -> [String]
-numbered = zipWith f [1..]
-  where
-    f n s = show n <> ". " <> s
 
 fetch' :: Url -> M ByteString
 fetch' url = fetch =<< liftIO (Http.parseRequest url)
@@ -230,7 +188,61 @@ fetch req = do
         MVar.putMVar mvar res
         return res
 
+-- ================================
+-- Pretty printing
+-- ================================
+
+viewCompact :: Hoogle.Target -> P.Doc
+viewCompact target = P.vsep $ map (P.text . unHTML) $ catMaybes
+  [ Just $ Hoogle.targetItem target
+  , moduleName
+  ]
+  where
+    moduleName = do
+      pkg <- fst <$> Hoogle.targetPackage target
+      mod <- fst <$> Hoogle.targetModule target
+      return $ pkg ++ " " ++ mod
+
+viewFull :: Hoogle.Target -> P.Doc
+viewFull target = P.vsep
+  [ divider
+  , content
+  , divider
+  ]
+  where
+    divider = P.text $ replicate 50 '='
+    content =
+      P.string
+      $ unlines
+      $ map unHTML
+      $ intersperse ""
+      $ filter (not . null)
+      [ Hoogle.targetItem target
+      , maybe "" fst $ Hoogle.targetPackage target
+      , maybe "" fst $ Hoogle.targetModule target
+      , Hoogle.targetDocs target
+      , Hoogle.targetURL target
+      ]
+
+
+unHTML :: String -> String
+unHTML = unescapeHTML . removeTags False
+  where
+    -- remove html tags
+    removeTags _ [] = []
+    removeTags False ('<':xs) = removeTags True xs
+    removeTags True  ('>':xs) = removeTags False xs
+    removeTags False (x:xs)   = x:removeTags False xs
+    removeTags True  (x:xs)   = removeTags True xs
+
+numbered :: [P.Doc] -> [P.Doc]
+numbered = zipWith f [1..]
+  where
+    f n s = P.fill 3 (P.int n <> P.text ".") P.<+> P.align s
+
+-- ================================
 -- Haddock handling
+-- ================================
 
 type Url = String
 
@@ -344,4 +356,5 @@ innerText el = flip foldMap (XML.elementNodes el) $ \case
 
 foldElement :: Monoid m => (XML.Element -> m) -> XML.Element -> m
 foldElement f el = foldr (mappend . foldElement f) (f el) (children el)
+
 

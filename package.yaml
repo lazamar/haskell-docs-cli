@@ -36,6 +36,7 @@ dependencies:
 - process
 - temporary
 - transformers
+- ansi-wl-pprint
 
 default-extensions:
 - ApplicativeDo
