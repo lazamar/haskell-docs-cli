@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d62b231f5028dc20088686e339c5f85a4a4d5ff05cf108cd1cadaf6364cab5d7
+-- hash: a1ca15a19a4b66c9969f8b7a5f894e9f5b007d84311b09b3d136f2ddf281cf53
 
 name:           hoogle-cli
 version:        0.1.0.0
@@ -48,6 +48,7 @@ library
     , process
     , temporary
     , text
+    , transformers
     , xml-conduit
   default-language: Haskell2010
 
@@ -75,6 +76,7 @@ executable hoogle-cli-exe
     , process
     , temporary
     , text
+    , transformers
     , xml-conduit
   default-language: Haskell2010
 
@@ -103,5 +105,6 @@ test-suite hoogle-cli-test
     , process
     , temporary
     , text
+    , transformers
     , xml-conduit
   default-language: Haskell2010

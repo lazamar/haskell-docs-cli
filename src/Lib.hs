@@ -5,9 +5,13 @@
 module Lib where
 
 import Debug.Trace
+
+import Control.Monad.Trans.Class (lift)
+import Control.Concurrent.MVar (MVar)
+import Control.Monad.Trans.State.Lazy (StateT)
 import Data.Functor ((<&>))
 import Data.Bifunctor (bimap)
-import Data.ByteString (ByteString)
+import Data.ByteString.Lazy (ByteString)
 import Data.Either (either)
 import Data.List.Extra (unescapeHTML)
 import Control.Monad (foldM)
@@ -17,6 +21,7 @@ import Data.Maybe (catMaybes, fromMaybe, fromJust)
 import Data.List (intersperse, intercalate, foldl')
 import Data.Char (chr, ord)
 import Data.Set (Set)
+import Data.Map.Strict (Map)
 import Data.Text (Text)
 import System.IO (hPutStr)
 import System.IO.Temp
@@ -25,28 +30,42 @@ import System.IO.Temp
   , withTempFile
   , withTempDirectory
   , getCanonicalTemporaryDirectory)
-import qualified System.Process as Process
-import qualified Hoogle
+
+
+import qualified Control.Monad.Trans.State.Lazy as State
+import qualified Control.Concurrent.MVar as MVar
+import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Map.Strict as Map
-import qualified Text.XML as XML
-import qualified Text.HTML.DOM as HTML
 import qualified Data.Set as Set
-import qualified Data.Aeson as Aeson
-import qualified Data.Text.IO as Text (hPutStr)
 import qualified Data.Text as Text
-import qualified Data.Text.Lazy as LText
 import qualified Data.Text.Encoding as Text
+import qualified Data.Text.IO as Text (hPutStr)
+import qualified Data.Text.Lazy as LText
 import qualified Data.Text.Lazy.Encoding as LText
+import qualified Hoogle
 import qualified Network.HTTP.Client as Http
 import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
 import qualified Options.Applicative as O
 import qualified System.Console.Haskeline as CLI
+import qualified System.Process as Process
+import qualified Text.HTML.DOM as HTML
+import qualified Text.XML as XML
 
 data Options = Options
   { count :: Int
   , pageSize :: Int
   }
+
+data ShellState = ShellState
+  { sLastResults :: [Hoogle.Target]
+  , sLastShown :: Int
+  , sManager :: Http.Manager
+  , sCache :: Map Url (MVar ByteString)
+  , sOptions :: Options
+  }
+
+type M a = StateT ShellState (CLI.InputT IO) a
 
 defaultPageSize = 20
 
@@ -78,19 +97,17 @@ unHTML = unescapeHTML . removeTags False
     removeTags True  (x:xs)   = removeTags True xs
 
 
-runSearch :: Http.Manager -> Options -> String -> IO [Hoogle.Target]
-runSearch manager Options{..} term = do
+runSearch :: String -> M [Hoogle.Target]
+runSearch term = do
+  Options{..} <- State.gets sOptions
   req <- Http.parseRequest "https://hoogle.haskell.org"
     <&> Http.setQueryString
       [ ("mode", Just "json")
       , ("start", Just "1")
-      , ("hoogle", Just $ bs term)
+      , ("hoogle", Just $ Text.encodeUtf8 $ Text.pack term)
       ]
-  res <- Http.httpLbs req manager
-  either error return $ Aeson.eitherDecode (Http.responseBody res)
-  where
-    bs :: String -> ByteString
-    bs = Text.encodeUtf8 . Text.pack
+  res <- fetch req
+  either error return $ Aeson.eitherDecode res
 
 viewCompact :: Hoogle.Target -> String
 viewCompact target = concatMap unHTML $ catMaybes
@@ -116,12 +133,6 @@ viewFull target
   , Hoogle.targetURL target
   ]
 
-data ShellState = ShellState
-  { lastResults :: [Hoogle.Target]
-  , lastShown :: Int
-  }
-
-
 splitOn :: Eq a => a -> [a] -> [[a]]
 splitOn _ [] = []
 splitOn x xs = y : splitOn x (drop 1 ys)
@@ -132,53 +143,57 @@ someFunc :: IO ()
 someFunc = do
   options <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
-  let loop :: ShellState -> CLI.InputT IO ()
-      loop state = do
-        minput <- CLI.getInputLine "hoogle> "
-        case minput of
-          Nothing -> return ()
-          Just "q" -> return ()
-          Just "quit" -> return ()
-          Just (x:"source")
-            | Just n <- readMaybe [x] -> do
-            liftIO $ do
-              let target = lastResults state !! (n - 1)
-              (anchor, url) <- sourceUrl manager target
-              res <- get manager url
-              let (filename, mline, content) = fileInfo anchor res
-                  line = maybe "" (("+" <>) . show) mline
-              withSystemTempFile filename $ \fullpath handle -> do
-                Text.hPutStr handle content
-                Process.callCommand $ traceShowId $ unwords ["nvim ", fullpath, line]
-            loop state
-
-          Just term
-            | Just n <- readMaybe term -> do
-              details state (n - 1)
-              loop state
-            | otherwise -> do
-              res <- liftIO $ runSearch manager options term
-              liftIO
-                $ putStrLn
-                $ unlines
-                $ reverse
-                $ numbered
-                $ take (pageSize options)
-                $ map viewCompact res
-              loop state { lastResults = res, lastShown = pageSize options }
-
-      details :: ShellState -> Int -> CLI.InputT IO ()
-      details state ix = liftIO $ do
-        divider
-        putStrLn $ viewFull $ lastResults state !! ix
-        divider
-
-      initialState = ShellState
-        { lastResults = []
-        , lastShown = 0
+  CLI.runInputT CLI.defaultSettings
+    $ State.evalStateT loop ShellState
+        { sLastResults = []
+        , sLastShown = 0
+        , sManager = manager
+        , sOptions = options
+        , sCache = mempty
         }
 
-  CLI.runInputT CLI.defaultSettings $ loop initialState
+loop :: M ()
+loop = do
+  minput <- lift $ CLI.getInputLine "hoogle> "
+  case minput of
+    Nothing -> return ()
+    Just "q" -> return ()
+    Just "quit" -> return ()
+    Just (x:"source") | Just n <- readMaybe [x] -> do
+      results <- State.gets sLastResults
+      let target = results !! (n - 1)
+      (anchor, url) <- sourceUrl target
+      res <- fetch' url
+      let (filename, mline, content) = fileInfo anchor res
+          line = maybe "" (("+" <>) . show) mline
+      liftIO $ withSystemTempFile filename $ \fullpath handle -> do
+        Text.hPutStr handle content
+        Process.callCommand $ traceShowId $ unwords ["nvim ", fullpath, line]
+      loop
+
+    Just term | Just n <- readMaybe term -> do
+      results <- State.gets sLastResults
+      liftIO $ do
+        divider
+        putStrLn $ viewFull $ results !! (n - 1)
+        divider
+      loop
+
+    Just term -> do
+      options <- State.gets sOptions
+      res <- runSearch term
+      liftIO
+        $ putStrLn
+        $ unlines
+        $ reverse
+        $ numbered
+        $ take (pageSize options)
+        $ map viewCompact res
+      State.modify' $ \s -> s
+          { sLastResults = res
+          , sLastShown = pageSize options
+          }
+      loop
 
 withTempPath :: String -> (String -> IO a) -> IO a
 withTempPath path f = do
@@ -189,8 +204,6 @@ withTempPath path f = do
     go parent (x:xs) =
       withTempDirectory parent x $ \p -> go p xs
 
-
-
 divider :: IO ()
 divider = putStrLn $ replicate 50 '='
 
@@ -199,11 +212,23 @@ numbered = zipWith f [1..]
   where
     f n s = show n <> ". " <> s
 
-get :: Http.Manager -> String -> IO LB.ByteString
-get manager url = do
-  req <- Http.parseRequest url
-  res <- Http.httpLbs req manager
-  return $ Http.responseBody res
+fetch' :: Url -> M ByteString
+fetch' url = fetch =<< liftIO (Http.parseRequest url)
+
+fetch :: Http.Request -> M LB.ByteString
+fetch req = do
+  cache <- State.gets sCache
+  let key = show req
+  case Map.lookup key cache of
+    Just mvar -> liftIO $ MVar.readMVar mvar
+    Nothing -> do
+      manager <- State.gets sManager
+      mvar <- liftIO MVar.newEmptyMVar
+      State.modify $ \s -> s { sCache = Map.insert key mvar (sCache s) }
+      liftIO $ do
+        res <- Http.responseBody <$> Http.httpLbs req manager
+        MVar.putMVar mvar res
+        return res
 
 -- Haddock handling
 
@@ -248,9 +273,9 @@ anchorLine anchor
           else anchorNodes n (XML.elementNodes e)
 
 -- | Get URL for source file for a target
-sourceUrl :: Http.Manager -> Hoogle.Target -> IO (Anchor, Url)
-sourceUrl manager target = do
-  docs <- get manager $ dropAnchor docsUrl
+sourceUrl :: Hoogle.Target -> M (Anchor, Url)
+sourceUrl target = do
+  docs <- fetch' (dropAnchor docsUrl)
   let links = sourceLinks (HTML.parseLBS docs)
       url = toAbsoluteUrl $ fromJust $ lookup anchor links
   return (takeAnchor url, url)
