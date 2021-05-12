@@ -10,7 +10,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Trans.State.Lazy (StateT)
 import Data.Functor ((<&>))
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (bimap, second, first)
 import Data.ByteString.Lazy (ByteString)
 import Data.Either (either)
 import Data.List.Extra (unescapeHTML)
@@ -18,7 +18,7 @@ import Control.Monad (foldM)
 import Control.Monad.IO.Class (liftIO)
 import Text.Read (readMaybe)
 import Data.Maybe (catMaybes, fromMaybe, fromJust)
-import Data.List (intersperse, intercalate, foldl')
+import Data.List (intersperse, intercalate, foldl', find, isPrefixOf)
 import Data.Char (chr, ord)
 import Data.Set (Set)
 import Data.Map.Strict (Map)
@@ -118,48 +118,73 @@ someFunc = do
         , sCache = mempty
         }
 
+data Cmd
+  = Search String
+  | ViewDocumentation Int
+  | ViewSource Int
+  | Quit
+
+commands :: [String]
+commands = [ "src", "quit" ]
+
+fillPrefix :: String -> Maybe String
+fillPrefix v = find (v `isPrefixOf`) commands
+
+parseCommand :: String -> Either String Cmd
+parseCommand str = case str of
+  (':':xs) ->
+    let (mcmd, args) = bimap fillPrefix tail $ break (is ' ') xs
+    in
+    case mcmd of
+      Nothing -> Left "Unknown command"
+      Just cmd -> case cmd of
+        "src" | Just n <- readMaybe args -> Right $ ViewSource n
+        "src" -> Left "the :src command expects an integer"
+        "quit" -> Right Quit
+  x | Just n <- readMaybe x -> Right $ ViewDocumentation n
+  _ -> Right $ Search str
+
 loop :: M ()
 loop = do
   minput <- lift $ CLI.getInputLine "hoogle> "
-  case minput of
-    Nothing -> return ()
-    Just "q" -> return ()
-    Just "quit" -> return ()
-    Just (x:"source") | Just n <- readMaybe [x] -> do
-      results <- State.gets sLastResults
-      let target = results !! (n - 1)
-      (anchor, url) <- sourceUrl target
-      res <- fetch' url
-      let (filename, mline, content) = fileInfo anchor res
-          line = maybe "" (("+" <>) . show) mline
-      liftIO $ withSystemTempFile filename $ \fullpath handle -> do
-        Text.hPutStr handle content
-        Process.callCommand $ traceShowId $ unwords ["nvim ", fullpath, line]
-      loop
+  case parseCommand $ fromMaybe "" minput of
+    Left err -> liftIO (putStrLn err) >> loop
+    Right Quit -> return ()
+    Right cmd -> runCommand cmd >> loop
 
-    Just term | Just n <- readMaybe term -> do
-      results <- State.gets sLastResults
-      liftIO $ do
-        P.putDoc $ viewFull $ results !! (n - 1)
-        putStrLn ""
-      loop
-
-    Just term -> do
-      options <- State.gets sOptions
-      res <- runSearch term
-      liftIO $ do
-        P.putDoc
-          $ P.vsep
-          $ reverse
-          $ numbered
-          $ take (pageSize options)
-          $ map viewCompact res
-        putStrLn ""
-      State.modify' $ \s -> s
-          { sLastResults = res
-          , sLastShown = pageSize options
-          }
-      loop
+runCommand :: Cmd -> M ()
+runCommand = \case
+  Quit -> return ()
+  Search str -> do
+    options <- State.gets sOptions
+    res <- runSearch str
+    liftIO $ do
+      P.putDoc
+        $ P.vsep
+        $ reverse
+        $ numbered
+        $ take (pageSize options)
+        $ map viewCompact res
+      putStrLn ""
+    State.modify' $ \s -> s
+        { sLastResults = res
+        , sLastShown = pageSize options
+        }
+  ViewDocumentation ix -> do
+    results <- State.gets sLastResults
+    liftIO $ do
+      P.putDoc $ viewFull $ results !! (ix - 1)
+      putStrLn ""
+  ViewSource ix -> do
+    results <- State.gets sLastResults
+    let target = results !! (ix - 1)
+    (anchor, url) <- sourceUrl target
+    res <- fetch' url
+    let (filename, mline, content) = fileInfo anchor res
+        line = maybe "" (("+" <>) . show) mline
+    liftIO $ withSystemTempFile filename $ \fullpath handle -> do
+      Text.hPutStr handle content
+      Process.callCommand $ traceShowId $ unwords ["nvim ", fullpath, line]
 
 withTempPath :: String -> (String -> IO a) -> IO a
 withTempPath path f = do
