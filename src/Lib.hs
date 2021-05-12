@@ -287,7 +287,7 @@ viewCompact tgroup = P.vsep
 
 viewPackageInfoList :: TargetGroup -> P.Doc
 viewPackageInfoList
-  = foldr (P.<+>) mempty
+  = P.vsep
   . P.punctuate P.comma
   . mapMaybe viewPackageAndModule
   . toList
