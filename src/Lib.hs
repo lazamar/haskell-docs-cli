@@ -4,21 +4,22 @@
 {-# LANGUAGE LambdaCase #-}
 module Lib where
 
-import Debug.Trace
-
 import Control.Monad.Trans.Class (lift)
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Trans.State.Lazy (StateT)
 import Data.Functor ((<&>))
+import Data.Function (on)
+import Data.Foldable (toList)
 import Data.Bifunctor (bimap, second, first)
 import Data.ByteString.Lazy (ByteString)
 import Data.Either (either)
 import Data.List.Extra (unescapeHTML)
+import Data.List.NonEmpty (NonEmpty)
 import Control.Monad (foldM)
 import Control.Monad.IO.Class (liftIO)
 import Text.Read (readMaybe)
-import Data.Maybe (catMaybes, fromMaybe, fromJust)
-import Data.List (intersperse, intercalate, foldl', find, isPrefixOf)
+import Data.Maybe (catMaybes, fromMaybe, fromJust, mapMaybe, listToMaybe)
+import Data.List hiding (groupBy)
 import Data.Char (chr, ord)
 import Data.Set (Set)
 import Data.Map.Strict (Map)
@@ -32,6 +33,7 @@ import System.IO.Temp
   , getCanonicalTemporaryDirectory)
 
 
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Control.Monad.Trans.State.Lazy as State
 import qualified Control.Concurrent.MVar as MVar
 import qualified Data.Aeson as Aeson
@@ -58,8 +60,10 @@ data Options = Options
   , pageSize :: Int
   }
 
+type TargetGroup = NonEmpty Hoogle.Target
+
 data ShellState = ShellState
-  { sLastResults :: [Hoogle.Target]
+  { sLastResults :: [TargetGroup]
   , sLastShown :: Int
   , sManager :: Http.Manager
   , sCache :: Map Url (MVar ByteString)
@@ -68,7 +72,7 @@ data ShellState = ShellState
 
 type M a = StateT ShellState (CLI.InputT IO) a
 
-defaultPageSize = 20
+defaultPageSize = 100
 
 cliOptions :: O.ParserInfo Options
 cliOptions = O.info parser $ O.header " \
@@ -98,6 +102,30 @@ runSearch term = do
       ]
   res <- fetch req
   either error return $ Aeson.eitherDecode res
+
+toGroups :: [Hoogle.Target] -> [TargetGroup]
+toGroups
+  = mapMaybe NonEmpty.nonEmpty
+  . groupBy relevantFields
+  where
+    relevantFields target = target
+      { Hoogle.targetURL = ""
+      , Hoogle.targetPackage = Nothing
+      , Hoogle.targetModule = Nothing
+      }
+
+groupBy :: Ord b => (a -> b) -> [a] -> [[a]]
+groupBy f vs = go mempty vs
+  where
+    go res [] = reverse $ fst $ foldr takeOnce ([], res) $ reverse vs
+    go res (x:xs) = go newRes xs
+      where newRes = Map.insertWith (++) (f x) [x] res
+
+    takeOnce x (out, m) =
+      let key = f x in
+      case Map.lookup key m of
+        Nothing -> (out, m)
+        Just v -> (v:out, Map.delete key m)
 
 splitOn :: Eq a => a -> [a] -> [[a]]
 splitOn _ [] = []
@@ -157,7 +185,7 @@ runCommand = \case
   Quit -> return ()
   Search str -> do
     options <- State.gets sOptions
-    res <- runSearch str
+    res <- toGroups <$> runSearch str
     liftIO $ do
       P.putDoc
         $ P.vsep
@@ -177,14 +205,35 @@ runCommand = \case
       putStrLn ""
   ViewSource ix -> do
     results <- State.gets sLastResults
-    let target = results !! (ix - 1)
-    (anchor, url) <- sourceUrl target
-    res <- fetch' url
-    let (filename, mline, content) = fileInfo anchor res
-        line = maybe "" (("+" <>) . show) mline
-    liftIO $ withSystemTempFile filename $ \fullpath handle -> do
-      Text.hPutStr handle content
-      Process.callCommand $ traceShowId $ unwords ["nvim ", fullpath, line]
+    let tgroup = results !! (ix - 1)
+    case toList tgroup of
+      [target] -> editSource target
+      targets -> do
+        liftIO $ do
+          putStrLn "Select one:"
+          P.putDoc
+            $ P.vsep
+            $ reverse . numbered . reverse
+            $ mapMaybe viewPackageAndModule targets
+          putStrLn ""
+
+        mnum <- fmap (>>= readMaybe) $ lift $ CLI.getInputLine ": "
+        case mnum of
+          Nothing -> liftIO $ putStrLn "Number not recognised"
+          Just n -> case listToMaybe $ drop (n - 1) targets of
+            Nothing -> liftIO $ putStrLn "Invalid index"
+            Just target -> editSource target
+
+editSource :: Hoogle.Target -> M ()
+editSource target = do
+  (anchor, url) <- sourceUrl target
+  res <- fetch' url
+  let (filename, mline, content) = fileInfo anchor res
+      line = maybe "" (("+" <>) . show) mline
+  liftIO $ withSystemTempFile filename $ \fullpath handle -> do
+    Text.hPutStr handle content
+    Process.callCommand $ unwords ["nvim ", fullpath, line]
+
 
 withTempPath :: String -> (String -> IO a) -> IO a
 withTempPath path f = do
@@ -230,16 +279,24 @@ viewPackage target = do
 viewItem :: Hoogle.Target -> P.Doc
 viewItem target = prettyHTML $ Hoogle.targetItem target
 
-viewCompact :: Hoogle.Target -> P.Doc
-viewCompact target = P.vsep
-  [ viewItem target
-  , moduleName
+viewCompact :: TargetGroup -> P.Doc
+viewCompact tgroup = P.vsep
+  [ viewItem $ NonEmpty.head tgroup
+  , viewPackageInfoList tgroup
   ]
-  where
-    moduleName = fromMaybe mempty $ do
-      pkg <- viewPackage target
-      mod <- viewModule target
-      return $ pkg P.<+> mod
+
+viewPackageInfoList :: TargetGroup -> P.Doc
+viewPackageInfoList
+  = foldr (P.<+>) mempty
+  . P.punctuate P.comma
+  . mapMaybe viewPackageAndModule
+  . toList
+
+viewPackageAndModule :: Hoogle.Target -> Maybe P.Doc
+viewPackageAndModule target = do
+  pkg <- viewPackage target
+  mod <- viewModule target
+  return $ pkg P.<+> mod
 
 prettyHTML :: String -> P.Doc
 prettyHTML item = unXMLElement doc
@@ -263,21 +320,20 @@ prettyHTML item = unXMLElement doc
        "b" -> P.bold
        _ -> id
 
-viewFull :: Hoogle.Target -> P.Doc
-viewFull target = P.vsep
+viewFull :: TargetGroup -> P.Doc
+viewFull tgroup = P.vsep
   [ divider
   , content
   , divider
   ]
   where
     divider = P.black $ P.text $ replicate 50 '='
-    content = P.vsep $ catMaybes
-      [ Just $ viewItem target
-      , viewPackage target
-      , viewModule target
-      , Just . prettyHTML $ Hoogle.targetDocs target
-      , Just . P.cyan . P.text $ Hoogle.targetURL target
-      ]
+    representative = NonEmpty.head tgroup
+    content = P.vsep $
+      [ viewItem representative
+      , viewPackageInfoList tgroup
+      , prettyHTML $ Hoogle.targetDocs representative
+      ] ++ (P.cyan . P.text . Hoogle.targetURL <$> toList tgroup)
 
 unHTML :: String -> String
 unHTML = unescapeHTML . removeTags False
