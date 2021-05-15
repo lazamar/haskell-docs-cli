@@ -20,7 +20,7 @@ import Control.Monad.IO.Class (liftIO)
 import Text.Read (readMaybe)
 import Data.Maybe (catMaybes, fromMaybe, fromJust, mapMaybe, listToMaybe)
 import Data.List hiding (groupBy)
-import Data.Char (chr, ord)
+import Data.Char (chr, ord, isSpace)
 import Data.Set (Set)
 import Data.Map.Strict (Map)
 import Data.Text (Text)
@@ -148,8 +148,9 @@ someFunc = do
 
 data Cmd
   = Search String
-  | ViewDocumentation Int
+  | ViewDocs Int
   | ViewSource Int
+  | ViewModuleDocs Int
   | Quit
 
 commands :: [String]
@@ -160,16 +161,18 @@ fillPrefix v = find (v `isPrefixOf`) commands
 
 parseCommand :: String -> Either String Cmd
 parseCommand str = case str of
-  (':':xs) ->
-    let (mcmd, args) = bimap fillPrefix tail $ break (is ' ') xs
-    in
-    case mcmd of
-      Nothing -> Left "Unknown command"
-      Just cmd -> case cmd of
-        "src" | Just n <- readMaybe args -> Right $ ViewSource n
-        "src" -> Left "the :src command expects an integer"
+  (':':xs) -> do
+    let (mcmd, args) = bimap fillPrefix tail $ break isSpace xs
+    cmd <- maybe (Left "Unknown command") Right mcmd
+    let intCmd f
+          | Just n <- readMaybe args = Right (f n)
+          | otherwise = Left $
+            "Command :" <> cmd <> "expects an integer argument"
+    case cmd of
+        "src" -> intCmd ViewSource
+        "mdoc" -> intCmd ViewModuleDocs
         "quit" -> Right Quit
-  x | Just n <- readMaybe x -> Right $ ViewDocumentation n
+  x | Just n <- readMaybe x -> Right (ViewDocs n)
   _ -> Right $ Search str
 
 loop :: M ()
@@ -198,42 +201,89 @@ runCommand = \case
         { sLastResults = res
         , sLastShown = pageSize options
         }
-  ViewDocumentation ix -> do
-    results <- State.gets sLastResults
+  ViewDocs ix -> do
+    tgroup <- getTargetGroup ix
     liftIO $ do
-      P.putDoc $ viewFull $ results !! (ix - 1)
+      P.putDoc $ viewFull tgroup
       putStrLn ""
-  ViewSource ix -> do
-    results <- State.gets sLastResults
-    let tgroup = results !! (ix - 1)
-    case toList tgroup of
-      [target] -> editSource target
-      targets -> do
-        liftIO $ do
-          putStrLn "Select one:"
-          P.putDoc
-            $ P.vsep
-            $ reverse . numbered . reverse
-            $ mapMaybe viewPackageAndModule targets
-          putStrLn ""
+  ViewModuleDocs ix -> do
+    tgroup <- getTargetGroup ix
+    target <- promptSelectOne tgroup
+    html <- fetch' (moduleLink target)
+    let docs = toModuleDocs html
+    undefined
 
-        mnum <- fmap (>>= readMaybe) $ lift $ CLI.getInputLine ": "
-        case mnum of
-          Nothing -> liftIO $ putStrLn "Number not recognised"
-          Just n -> case listToMaybe $ drop (n - 1) targets of
-            Nothing -> liftIO $ putStrLn "Invalid index"
-            Just target -> editSource target
+  ViewSource ix -> do
+    tgroup <- getTargetGroup ix
+    target <- promptSelectOne tgroup
+    editSource target
+
+getTargetGroup :: Int -> M TargetGroup
+getTargetGroup ix = do
+    results <- State.gets sLastResults
+    return $ results !! (ix - 1)
+
+promptSelectOne :: TargetGroup -> M Hoogle.Target
+promptSelectOne tgroup =
+  case toList tgroup of
+    [target] -> return target
+    targets -> do
+      liftIO $ do
+        putStrLn "Select one:"
+        P.putDoc
+          $ P.vsep
+          $ reverse . numbered . reverse
+          $ mapMaybe viewPackageAndModule targets
+        putStrLn ""
+
+      num <- lift $ CLI.getInputLine ": "
+      case readMaybe =<< num of
+        Just n -> case listToMaybe $ drop (n - 1) targets of
+          Just target -> return target
+          Nothing -> do
+            liftIO $ putStrLn "Invalid index"
+            promptSelectOne tgroup
+        Nothing -> do
+          liftIO $ putStrLn "Number not recognised"
+          promptSelectOne tgroup
 
 editSource :: Hoogle.Target -> M ()
 editSource target = do
-  (anchor, url) <- sourceUrl target
-  res <- fetch' url
-  let (filename, mline, content) = fileInfo anchor res
-      line = maybe "" (("+" <>) . show) mline
+  srcLink <- sourceLink target
+  html <- fetch' srcLink
+  view (fileInfo srcLink html)
+
+view :: FileInfo -> M ()
+view (FileInfo filename mline content) = do
+  let line = maybe "" (("+" <>) . show) mline
   liftIO $ withSystemTempFile filename $ \fullpath handle -> do
     Text.hPutStr handle content
     Process.callCommand $ unwords ["nvim ", fullpath, line]
 
+data ModuleDocs = ModuleDocs
+  { mTitle :: Text
+  , mContent :: [ModuleItem]
+  }
+
+type ModuleItem = XML.Element
+
+toModuleDocs :: HTML -> ModuleDocs
+toModuleDocs (HTML src) = head $ do
+  let root = XML.documentRoot (HTML.parseLBS src)
+  body       <- filter (is "body" . tag) $ children root
+  content    <- filter (is "content" . id_) $ children body
+  let mheader = innerText <$> find (is "module-header" . id_) (children content)
+  let description = do
+        desc <- find (is "description" . id_) (children content)
+        find (is "doc" . id_) (children desc)
+  let description =
+        find (is "interface" . id_) (children content)
+  undefined
+  --liftIO $ P.putDoc $ P.vsep []
+    --  [ prettyModuleHeader mheader
+    --  , prettyModuleDescription description
+    --  , prettyModuleInterface iface
+    --  ]
 
 withTempPath :: String -> (String -> IO a) -> IO a
 withTempPath path f = do
@@ -244,8 +294,16 @@ withTempPath path f = do
     go parent (x:xs) =
       withTempDirectory parent x $ \p -> go p xs
 
-fetch' :: Url -> M ByteString
-fetch' url = fetch =<< liftIO (Http.parseRequest url)
+class HasUrl a where
+  getUrl :: a -> Url
+instance HasUrl ModuleLink where getUrl (ModuleLink url _) = url
+instance HasUrl SourceLink where getUrl (SourceLink url _) = url
+
+fetch' :: HasUrl a => a -> M HTML
+fetch' x = do
+  req <- liftIO $ Http.parseRequest $ getUrl x
+  src <- fetch req
+  return (HTML src)
 
 fetch :: Http.Request -> M LB.ByteString
 fetch req = do
@@ -356,6 +414,12 @@ numbered = zipWith f [1..]
 
 type Url = String
 
+-- | Link to an item in a module page
+data ModuleLink = ModuleLink Url Anchor
+
+-- | Link to an item in a src page
+data SourceLink = SourceLink Url Anchor
+
 type FileName = String
 
 type FileContent = Text
@@ -364,15 +428,25 @@ type Anchor = Text
 
 newtype RelativeUrl = RelativeUrl Text
 
-fileInfo :: Anchor -> LB.ByteString -> (FileName, Maybe Int, FileContent)
-fileInfo anchor doc = head $ do
+newtype HTML = HTML ByteString
+
+data FileInfo = FileInfo
+  { fName :: FileName
+  , fLine :: Maybe Int
+  , fContent :: FileContent
+  }
+
+-- | Convert an html page into a src file and inform of line
+-- number of SourceLink
+fileInfo :: SourceLink -> HTML -> FileInfo
+fileInfo (SourceLink _ anchor) (HTML doc) = head $ do
   let page = HTML.parseLBS doc
       root = XML.documentRoot page
   head_ <- filter (is "head" . tag) $ children root
   title <- filter (is "title" . tag) $ children head_
   let filename = Text.unpack $ Text.replace "/" "." $ innerText title
   body <- filter (is "body" . tag) $ children root
-  return (filename, anchorLine anchor body, innerText body)
+  return $ FileInfo filename (anchorLine anchor body) (innerText body)
 
 -- | File line where the tag is
 anchorLine :: Anchor -> XML.Element -> Maybe Int
@@ -395,37 +469,45 @@ anchorLine anchor
           else anchorNodes n (XML.elementNodes e)
 
 -- | Get URL for source file for a target
-sourceUrl :: Hoogle.Target -> M (Anchor, Url)
-sourceUrl target = do
-  docs <- fetch' (dropAnchor docsUrl)
-  let links = sourceLinks (HTML.parseLBS docs)
-      url = toAbsoluteUrl $ fromJust $ lookup anchor links
-  return (takeAnchor url, url)
+sourceLink :: Hoogle.Target -> M SourceLink
+sourceLink target = do
+  let mlink@(ModuleLink _ anchor) = moduleLink target
+  html <- fetch' mlink
+  let links = sourceLinks mlink html
+  case lookup anchor links of
+    Nothing -> error "anchor missing in module docs"
+    Just link -> return link
+
+-- | Get URL for module documentation
+moduleLink :: Hoogle.Target -> ModuleLink
+moduleLink target = ModuleLink (dropAnchor url) (takeAnchor url)
   where
-    docsUrl = Hoogle.targetURL target
-    anchor = takeAnchor $ Hoogle.targetURL target
-    dropAnchor = takeWhile (/= '#')
-    parent = reverse . tail . dropWhile (/= '/') . reverse
-    toAbsoluteUrl (RelativeUrl url) = parent docsUrl <> "/" <> Text.unpack url
+    url = Hoogle.targetURL target
 
 takeAnchor :: Url -> Anchor
 takeAnchor = Text.pack . tail . dropWhile (/= '#')
 
-sourceLinks :: XML.Document -> [(Anchor, RelativeUrl)]
-sourceLinks doc = do
-  let root = XML.documentRoot doc
+dropAnchor :: Url -> Url
+dropAnchor = takeWhile (/= '#')
+
+sourceLinks :: ModuleLink -> HTML -> [(Anchor, SourceLink)]
+sourceLinks (ModuleLink moduleLink _) (HTML html) = do
+  let root = XML.documentRoot (HTML.parseLBS html)
   body       <- filter (is "body" . tag) $ children root
   content    <- filter (is "content" . id_) $ children body
   interface  <- filter (is "interface" . id_) $ children content
   definition <- filter (is "top" . class_) $ children interface
 
-  signature  <- filter (is "src" . class_) $ children definition
-  sourceUrl  <- map (attr "href") . filter (is "Source" . innerText)
-     $ children signature
-  let constructors = filter (is "subs constructors" . class_) $ children definition
+  signature  <- findM (is "src" . class_) $ children definition
+  url <- map (toSourceUrl . attr "href")
+    . findM (is "Source" . innerText)
+    $ children signature
+  let surl =  SourceLink (dropAnchor url) (takeAnchor url)
 
+  let constructors = filter (is "subs constructors" . class_) $ children definition
   anchor <- foldMap anchors (signature : constructors)
-  return (anchor, RelativeUrl sourceUrl)
+
+  return (anchor, surl)
   where
     anchors el = f $ foldMap anchors (children el)
       where
@@ -434,6 +516,15 @@ sourceLinks doc = do
     isAnchor el =
       class_ el == "def" &&
       (Text.isPrefixOf "t:" (id_ el) || Text.isPrefixOf "v:" (id_ el))
+
+    parent = reverse . tail . dropWhile (/= '/') . reverse
+
+    toSourceUrl relativeUrl = parent moduleLink <> "/" <> Text.unpack relativeUrl
+
+findM :: (MonadFail m, Foldable t) => (a -> Bool) -> t a -> m a
+findM f x = do
+  Just a <- return $ find f x
+  return a
 
 is :: Eq a => a -> a -> Bool
 is = (==)
