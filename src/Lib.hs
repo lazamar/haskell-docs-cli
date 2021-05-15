@@ -117,7 +117,12 @@ toGroups
 groupBy :: Ord b => (a -> b) -> [a] -> [[a]]
 groupBy f vs = go mempty vs
   where
-    go res [] = reverse $ fst $ foldr takeOnce ([], res) $ reverse vs
+    go res []
+      = map reverse
+      $ reverse
+      $ fst
+      $ foldr takeOnce ([], res)
+      $ reverse vs
     go res (x:xs) = go newRes xs
       where newRes = Map.insertWith (++) (f x) [x] res
 
@@ -232,7 +237,8 @@ promptSelectOne tgroup =
         putStrLn "Select one:"
         P.putDoc
           $ P.vsep
-          $ reverse . numbered . reverse
+          $ reverse
+          $ numbered
           $ mapMaybe viewPackageAndModule targets
         putStrLn ""
 
@@ -270,20 +276,15 @@ type ModuleItem = XML.Element
 toModuleDocs :: HTML -> ModuleDocs
 toModuleDocs (HTML src) = head $ do
   let root = XML.documentRoot (HTML.parseLBS src)
-  body       <- filter (is "body" . tag) $ children root
-  content    <- filter (is "content" . id_) $ children body
-  let mheader = innerText <$> find (is "module-header" . id_) (children content)
-  let description = do
-        desc <- find (is "description" . id_) (children content)
-        find (is "doc" . id_) (children desc)
-  let description =
-        find (is "interface" . id_) (children content)
-  undefined
-  --liftIO $ P.putDoc $ P.vsep []
-    --  [ prettyModuleHeader mheader
-    --  , prettyModuleDescription description
-    --  , prettyModuleInterface iface
-    --  ]
+  body    <- findM (is "body" . tag) $ children root
+  content <- findM (is "content" . id_) $ children body
+  let mheader = findM (is "module-header" . id_) (children content)
+      mdescription = findM (is "description" . id_) (children content)
+  interface <- findM (is "interface" . id_) (children content)
+  return ModuleDocs
+    { mTitle = maybe "" innerText mheader
+    , mContent = mdescription ++ children interface
+    }
 
 withTempPath :: String -> (String -> IO a) -> IO a
 withTempPath path f = do
@@ -416,9 +417,11 @@ type Url = String
 
 -- | Link to an item in a module page
 data ModuleLink = ModuleLink Url Anchor
+  deriving (Show)
 
 -- | Link to an item in a src page
 data SourceLink = SourceLink Url Anchor
+  deriving (Show)
 
 type FileName = String
 
@@ -475,7 +478,10 @@ sourceLink target = do
   html <- fetch' mlink
   let links = sourceLinks mlink html
   case lookup anchor links of
-    Nothing -> error "anchor missing in module docs"
+    Nothing -> error $ unlines $
+      [ "anchor missing in module docs"
+      , show mlink
+      ] ++ map show links
     Just link -> return link
 
 -- | Get URL for module documentation
