@@ -409,6 +409,8 @@ prettyHTML = unXMLElement
        "h2"      -> mappend (P.text "## ")
        "h3"      -> mappend (P.text "### ")
        "h4"      -> mappend (P.text "#### ")
+       "h5"      -> mappend (P.text "##### ")
+       "h6"      -> mappend (P.text "###### ")
        "tt"      -> P.green
        "pre"     -> const $ P.indent 2 . P.black . linebreak . P.string . Text.unpack $ innerText e
        "code"    -> P.black
@@ -418,7 +420,7 @@ prettyHTML = unXMLElement
        "dt"      -> P.bold . linebreak
        "dd"      -> linebreak
        "ol"      -> const $ linebreak $ P.vsep $ numbered $ map unXMLElement (children e)
-       "ul"      -> const $ P.vsep $ map unXMLElement (children e)
+       "ul"      -> const $ P.vsep $ map (bullet . unXMLElement) (children e)
        -- don't show instance details
        "details" -> hide
        _         -> id
@@ -465,6 +467,9 @@ numbered :: [P.Doc] -> [P.Doc]
 numbered = zipWith f [1..]
   where
     f n s = P.fill 2 (P.blue $ P.int n) P.<+> P.align s
+
+bullet :: P.Doc -> P.Doc
+bullet doc = P.fill 2 (P.char '•') P.<+> P.align doc
 
 -- ================================
 -- Haddock handling
