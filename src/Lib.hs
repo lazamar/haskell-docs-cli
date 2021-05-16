@@ -242,7 +242,7 @@ runCommand = \case
     target <- NonEmpty.head <$> getTargetGroup ix
     let ModuleLink url anchor = moduleLink target
     html <- fetch' url
-    viewInEditor $ viewDeclDocs anchor $ toModuleDocs html
+    viewInTerminal $ viewDeclDocs anchor $ toModuleDocs html
   ViewModuleDocs ix -> do
     tgroup <- getTargetGroup ix
     target <- promptSelectOne tgroup
