@@ -439,7 +439,8 @@ prettyHTML = fromMaybe mempty . unXMLElement
       "subs instances"    -> Just . P.indent 2
       "subs constructors" -> Just . P.indent 2
       --"inst-left"         -> Just . P.fillBreak 4
-      "top"               -> Just . mappend P.linebreak
+      -- a declaration wrapper
+      "top"               -> const $ mappend P.linebreak . P.vsep <$> unXMLChildren e
       -- style
       "caption"           -> Just . P.bold
       "name"              -> Just . P.dullgreen
