@@ -2,6 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Lib where
 
 import Control.Monad.Trans.Class (lift)
@@ -155,12 +156,16 @@ someFunc = do
 data Cmd
   = Search String
   | ViewDocs Int
-  | ViewSource Int
+  -- ^ docs provided in the hoogle response
+  | ViewExtendedDocs Int
+  -- ^ declaration's docs available in the haddock page
   | ViewModuleDocs Int
+  -- ^ full haddock for module
+  | ViewSource Int
   | Quit
 
 commands :: [String]
-commands = [ "src", "quit", "mdoc" ]
+commands = [ "src", "quit", "mdoc", "edoc" ]
 
 fillPrefix :: String -> Maybe String
 fillPrefix v = find (v `isPrefixOf`) commands
@@ -177,6 +182,7 @@ parseCommand str = case str of
     case cmd of
         "src" -> intCmd ViewSource
         "mdoc" -> intCmd ViewModuleDocs
+        "edoc" -> intCmd ViewExtendedDocs
         "quit" -> Right Quit
   x | Just n <- readMaybe x -> Right (ViewDocs n)
   _ -> Right $ Search str
@@ -212,13 +218,22 @@ runCommand = \case
     liftIO $ do
       P.putDoc $ viewFull tgroup
       putStrLn ""
+  ViewExtendedDocs ix -> do
+    target <- NonEmpty.head <$> getTargetGroup ix
+    let ModuleLink url anchor = moduleLink target
+    html <- fetch' url
+    liftIO
+      $ P.putDoc
+      $ viewDeclDocs anchor
+      $ toModuleDocs html
   ViewModuleDocs ix -> do
     tgroup <- getTargetGroup ix
     target <- promptSelectOne tgroup
     html <- fetch' (moduleLink target)
-    -- let docs = toModuleDocs html
-    -- width of 60 + 60
-    liftIO $ P.putDoc $ viewModule html
+    liftIO
+      $ P.putDoc
+      $ viewModuleDocs
+      $ toModuleDocs html
 
   ViewSource ix -> do
     tgroup <- getTargetGroup ix
@@ -269,8 +284,9 @@ view (FileInfo filename mline content) = do
     Process.callCommand $ unwords ["nvim ", fullpath, line]
 
 data ModuleDocs = ModuleDocs
-  { mTitle :: Text
-  , mContent :: [ModuleItem]
+  { mTitle :: String
+  , mDescription :: Maybe XML.Element
+  , mDeclarations :: [(Set Anchor, XML.Element)]
   }
 
 type ModuleItem = XML.Element
@@ -283,9 +299,11 @@ toModuleDocs (HTML src) = head $ do
   let mheader = findM (is "module-header" . id_) (children content)
       mdescription = findM (is "description" . id_) (children content)
   interface <- findM (is "interface" . id_) (children content)
+  let decls = children interface
   return ModuleDocs
-    { mTitle = maybe "" innerText mheader
-    , mContent = mdescription ++ children interface
+    { mTitle = Text.unpack $ maybe "" innerText mheader
+    , mDescription = mdescription
+    , mDeclarations = decls <&> \e -> (Set.fromList (anchors e), e)
     }
 
 withTempPath :: String -> (String -> IO a) -> IO a
@@ -301,6 +319,7 @@ class HasUrl a where
   getUrl :: a -> Url
 instance HasUrl ModuleLink where getUrl (ModuleLink url _) = url
 instance HasUrl SourceLink where getUrl (SourceLink url _) = url
+instance HasUrl Url        where getUrl url = url
 
 fetch' :: HasUrl a => a -> M HTML
 fetch' x = do
@@ -357,14 +376,22 @@ viewPackageAndModule target = do
       pkg <- fst <$> Hoogle.targetPackage target
       return $ P.black (P.text pkg)
 
-viewModule :: HTML -> P.Doc
-viewModule (HTML html) = mconcat $ do
-  let root = XML.documentRoot (HTML.parseLBS html)
-  body        <- findM (is "body" . tag) $ children root
-  content     <- findM (is "content" . id_) $ children body
-  let description = findM (is "description" . id_) $ children content
-      interface   = findM (is "interface" . id_) $ children content
-  prettyHTML <$> (description ++ interface)
+viewModuleDocs :: ModuleDocs -> P.Doc
+viewModuleDocs (ModuleDocs name minfo decls) =
+  P.vsep $ [title]
+    ++ [ prettyHTML info | Just info <- [minfo] ]
+    ++ [ prettyHTML decl | (_, decl) <- decls ]
+  where
+    title = P.vsep
+      [ P.text name
+      , P.text $ replicate (length name) '='
+      , ""
+      ]
+
+viewDeclDocs :: Anchor -> ModuleDocs -> P.Doc
+viewDeclDocs anchor (ModuleDocs _ _ decls) =
+  maybe mempty (prettyHTML . snd)
+    $ find (Set.member anchor . fst) decls
 
 -- | Render Haddock's HTML
 prettyHTML :: XML.Element -> P.Doc
@@ -442,7 +469,7 @@ viewFull tgroup = P.vsep
       [ viewItem representative
       , viewPackageInfoList tgroup
       , prettyHTML $ wrapHTML $ Hoogle.targetDocs representative
-      ] ++ (P.cyan . P.text . Hoogle.targetURL <$> toList tgroup)
+      ] ++ reverse (P.cyan . P.text . Hoogle.targetURL <$> toList tgroup)
 
 wrapHTML :: String -> XML.Element
 wrapHTML
@@ -574,20 +601,20 @@ sourceLinks (ModuleLink moduleLink _) (HTML html) = do
 
   let constructors = filter (is "subs constructors" . class_) $ children declaration
   anchor <- foldMap anchors (signature : constructors)
-
   return (anchor, surl)
   where
-    anchors el = f $ foldMap anchors (children el)
-      where
-        f = if isAnchor el then (id_ el :) else id
+    parent = reverse . tail . dropWhile (/= '/') . reverse
+
+    toSourceUrl relativeUrl = parent moduleLink <> "/" <> Text.unpack relativeUrl
+
+anchors :: XML.Element -> [Anchor]
+anchors el = f $ foldMap anchors (children el)
+  where
+    f = if isAnchor el then (id_ el :) else id
 
     isAnchor el =
       class_ el == "def" &&
       (Text.isPrefixOf "t:" (id_ el) || Text.isPrefixOf "v:" (id_ el))
-
-    parent = reverse . tail . dropWhile (/= '/') . reverse
-
-    toSourceUrl relativeUrl = parent moduleLink <> "/" <> Text.unpack relativeUrl
 
 findM :: (MonadFail m, Foldable t) => (a -> Bool) -> t a -> m a
 findM f x = do
