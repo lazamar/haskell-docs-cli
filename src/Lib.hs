@@ -26,7 +26,7 @@ import Data.Char (chr, ord, isSpace)
 import Data.Set (Set)
 import Data.Map.Strict (Map)
 import Data.Text (Text)
-import System.IO (hPutStr)
+import System.IO (hPutStr, stdout)
 import System.IO.Temp
   ( withSystemTempDirectory
   , withSystemTempFile
@@ -234,17 +234,17 @@ runCommand = \case
         }
   ViewDocs ix -> do
     tgroup <- getTargetGroup ix
-    printDoc $ viewFull tgroup
+    viewInTerminal $ viewFull tgroup
   ViewExtendedDocs ix -> do
     target <- NonEmpty.head <$> getTargetGroup ix
     let ModuleLink url anchor = moduleLink target
     html <- fetch' url
-    printDoc $ viewDeclDocs anchor $ toModuleDocs html
+    viewInLess $ viewDeclDocs anchor $ toModuleDocs html
   ViewModuleDocs ix -> do
     tgroup <- getTargetGroup ix
     target <- promptSelectOne tgroup
     html <- fetch' (moduleLink target)
-    printDoc $ viewModuleDocs $ toModuleDocs html
+    viewInLess $ viewModuleDocs $ toModuleDocs html
   ViewSource ix -> do
     tgroup <- getTargetGroup ix
     target <- promptSelectOne tgroup
@@ -280,9 +280,16 @@ promptSelectOne tgroup =
           liftIO $ putStrLn "Number not recognised"
           promptSelectOne tgroup
 
-printDoc :: MonadIO m => P.Doc -> m ()
-printDoc doc = liftIO $ do
-  P.putDoc doc
+viewInTerminal :: MonadIO m => P.Doc -> m ()
+viewInTerminal doc = liftIO $ do
+  P.displayIO stdout $ P.renderSmart 1 80 doc
+  putStrLn ""
+
+viewInLess :: MonadIO m => P.Doc -> m ()
+viewInLess doc = liftIO $ do
+  let cmd = (Process.proc "less" ["-"]) { Process.std_in = Process.CreatePipe }
+  (Just hin, _, _, _) <- Process.createProcess cmd
+  P.hPutDoc hin $ P.plain doc
   putStrLn ""
 
 editSource :: Hoogle.Target -> M ()
@@ -423,13 +430,17 @@ prettyHTML = fromMaybe mempty . unXMLElement
       XML.NodeInstruction _ -> Nothing
       XML.NodeContent txt | Text.null txt -> Nothing
       XML.NodeContent txt -> Just
-        $ P.vsep
-        $ map (foldr (P.<+>) mempty . fmap P.text . words)
-        $ lines
+        $ docwords id
         $ unescapeHTML
         $ Text.unpack txt
       XML.NodeComment _ -> Nothing
       XML.NodeElement e -> unXMLElement e
+
+    docwords f [] = P.fillCat (f [])
+    docwords f (' ':xs) = docwords (f . (P.space :)) xs
+    docwords f ('\n':xs) = docwords f xs
+    docwords f xs = docwords (f . (P.text w :)) ys
+      where (w, ys) = break isSpace xs
 
     style e m = classStyle e m >>= tagStyle e
 
@@ -440,7 +451,6 @@ prettyHTML = fromMaybe mempty . unXMLElement
       "subs methods"      -> Just . P.nest 2
       "subs instances"    -> Just . P.nest 2
       "subs constructors" -> Just . P.nest 2
-      --"inst-left"         -> Just . P.fillBreak 4
       -- a declaration wrapper
       "top"               -> const $ mappend P.linebreak . P.vsep <$> unXMLChildren e
       -- style
@@ -473,12 +483,13 @@ prettyHTML = fromMaybe mempty . unXMLElement
        "dt"      -> Just . P.bold . linebreak
        "dd"      -> Just . linebreak
        "summary" -> Just . linebreak
-       "ol"      -> const $ linebreak . P.vsep . numbered <$> unXMLChildren e
-       "ul"      -> const $ P.vsep . map bullet <$> unXMLChildren e
+       "ol"      -> const $ Just . linebreak . P.vsep . numbered $ mapMaybe unXMLElement (children e)
+       "ul"      -> const $ Just . P.vsep . map bullet $ mapMaybe unXMLElement (children e)
        "td"      | isInstanceDetails e -> hide
                  | otherwise -> Just
-       "table"   -> const $
-                    flip mappend P.linebreak . P.vsep . map bullet <$> unXMLChildren e
+       "table"   -> const
+                      $ Just .  flip mappend P.linebreak . P.vsep . map bullet
+                      $ mapMaybe unXMLElement (children e)
        -- don't show instance details
        _         -> Just
 
