@@ -33,11 +33,11 @@ import System.IO.Temp
   , getCanonicalTemporaryDirectory)
 
 
-import qualified Data.List.NonEmpty as NonEmpty
-import qualified Control.Monad.Trans.State.Lazy as State
 import qualified Control.Concurrent.MVar as MVar
+import qualified Control.Monad.Trans.State.Lazy as State
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as LB
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Data.Text as Text
@@ -52,8 +52,9 @@ import qualified Options.Applicative as O
 import qualified System.Console.Haskeline as CLI
 import qualified System.Process as Process
 import qualified Text.HTML.DOM as HTML
-import qualified Text.XML as XML
 import qualified Text.PrettyPrint.ANSI.Leijen as P
+import qualified Text.PrettyPrint.ANSI.Leijen.Internal as P
+import qualified Text.XML as XML
 
 data Options = Options
   { count :: Int
@@ -159,7 +160,7 @@ data Cmd
   | Quit
 
 commands :: [String]
-commands = [ "src", "quit" ]
+commands = [ "src", "quit", "mdoc" ]
 
 fillPrefix :: String -> Maybe String
 fillPrefix v = find (v `isPrefixOf`) commands
@@ -215,8 +216,9 @@ runCommand = \case
     tgroup <- getTargetGroup ix
     target <- promptSelectOne tgroup
     html <- fetch' (moduleLink target)
-    let docs = toModuleDocs html
-    undefined
+    -- let docs = toModuleDocs html
+    -- width of 60 + 60
+    liftIO $ P.putDoc $ viewModule html
 
   ViewSource ix -> do
     tgroup <- getTargetGroup ix
@@ -325,18 +327,8 @@ fetch req = do
 -- Pretty printing
 -- ================================
 
-viewModule :: Hoogle.Target -> Maybe P.Doc
-viewModule target = do
-  mod <- fst <$> Hoogle.targetModule target
-  return $ P.magenta (P.text mod)
-
-viewPackage :: Hoogle.Target -> Maybe P.Doc
-viewPackage target = do
-  pkg <- fst <$> Hoogle.targetPackage target
-  return $ P.black (P.text pkg)
-
 viewItem :: Hoogle.Target -> P.Doc
-viewItem target = prettyHTML $ Hoogle.targetItem target
+viewItem = prettyHTML . wrapHTML . Hoogle.targetItem
 
 viewCompact :: TargetGroup -> P.Doc
 viewCompact tgroup = P.vsep
@@ -356,28 +348,84 @@ viewPackageAndModule target = do
   pkg <- viewPackage target
   mod <- viewModule target
   return $ pkg P.<+> mod
-
-prettyHTML :: String -> P.Doc
-prettyHTML item = unXMLElement doc
   where
-    doc = XML.documentRoot $ HTML.parseLBS $ bs $ "<p>" <> item <> "</p>"
-    bs = LB.fromStrict . Text.encodeUtf8 . Text.pack
+    viewModule target = do
+      mod <- fst <$> Hoogle.targetModule target
+      return $ P.magenta (P.text mod)
+
+    viewPackage target = do
+      pkg <- fst <$> Hoogle.targetPackage target
+      return $ P.black (P.text pkg)
+
+viewModule :: HTML -> P.Doc
+viewModule (HTML html) = mconcat $ do
+  let root = XML.documentRoot (HTML.parseLBS html)
+  body        <- findM (is "body" . tag) $ children root
+  content     <- findM (is "content" . id_) $ children body
+  let description = findM (is "description" . id_) $ children content
+      interface   = findM (is "interface" . id_) $ children content
+  prettyHTML <$> (description ++ interface)
+
+-- | Render Haddock's HTML
+prettyHTML :: XML.Element -> P.Doc
+prettyHTML = unXMLElement
+  where
+    unXMLElement e = style e $ foldMap unXMLNode $ XML.elementNodes e
     unXMLNode = \case
       XML.NodeInstruction _ -> mempty
-      XML.NodeContent txt -> P.text $ unescapeHTML $ Text.unpack txt
+      XML.NodeContent txt -> P.vsep
+        $ map (foldr (P.<+>) mempty . fmap P.text . words)
+        $ lines
+        $ unescapeHTML
+        $ Text.unpack txt
       XML.NodeComment _ -> mempty
       XML.NodeElement e -> unXMLElement e
-    unXMLElement e = modifier e $ foldMap unXMLNode $ XML.elementNodes e
-    modifier e = tagModifier e . classModifier e
-    classModifier e = case class_ e of
-      "name" -> P.dullgreen
-      _ -> id
-    tagModifier e = case tag e of
-       "a" -> P.cyan
-       "tt" -> P.green
-       "pre" -> P.black
-       "b" -> P.bold
-       _ -> id
+
+    style e = tagStyle e . classStyle e
+
+    classStyle e = case class_ e of
+      ""                  -> id
+      -- layout
+      "doc"               -> P.indent 2
+      "subs methods"      -> P.indent 2
+      "subs instances"    -> P.indent 2
+      "subs constructors" -> P.indent 2
+      "inst-left"         -> P.fillBreak 50
+      "top"               -> mappend P.linebreak
+      -- style
+      "caption"           -> P.bold
+      "name"              -> P.dullgreen
+      "def"               -> P.bold
+      "fixity"            -> P.black
+      -- invisible
+      "link"              -> hide
+      "selflink"          -> hide
+      -- modify
+      "module-header"     -> const $ mconcat $ map unXMLElement $ findM (is "caption" . class_) (children e)
+      _                   -> id
+
+    tagStyle e = case tag e of
+       "h1"      -> mappend (P.text "# ")
+       "h2"      -> mappend (P.text "## ")
+       "h3"      -> mappend (P.text "### ")
+       "h4"      -> mappend (P.text "#### ")
+       "tt"      -> P.green
+       "pre"     -> const $ P.indent 2 . P.black . linebreak . P.string . Text.unpack $ innerText e
+       "code"    -> P.black
+       "a"       -> P.cyan
+       "b"       -> P.bold
+       "p"       -> linebreak
+       "dt"      -> P.bold . linebreak
+       "dd"      -> linebreak
+       "ol"      -> const $ linebreak $ P.vsep $ numbered $ map unXMLElement (children e)
+       "ul"      -> const $ P.vsep $ map unXMLElement (children e)
+       -- don't show instance details
+       "details" -> hide
+       _         -> id
+
+    linebreak doc = P.linebreak <> doc <> P.linebreak
+    italics = P.Italicize True
+    hide = const mempty
 
 viewFull :: TargetGroup -> P.Doc
 viewFull tgroup = P.vsep
@@ -391,8 +439,17 @@ viewFull tgroup = P.vsep
     content = P.vsep $
       [ viewItem representative
       , viewPackageInfoList tgroup
-      , prettyHTML $ Hoogle.targetDocs representative
+      , prettyHTML $ wrapHTML $ Hoogle.targetDocs representative
       ] ++ (P.cyan . P.text . Hoogle.targetURL <$> toList tgroup)
+
+wrapHTML :: String -> XML.Element
+wrapHTML
+  = XML.documentRoot
+  . HTML.parseLBS
+  . LB.fromStrict
+  . Text.encodeUtf8
+  . Text.pack
+  . (\v -> "<div>" <> v <> "</div>")
 
 unHTML :: String -> String
 unHTML = unescapeHTML . removeTags False
@@ -499,18 +556,18 @@ dropAnchor = takeWhile (/= '#')
 sourceLinks :: ModuleLink -> HTML -> [(Anchor, SourceLink)]
 sourceLinks (ModuleLink moduleLink _) (HTML html) = do
   let root = XML.documentRoot (HTML.parseLBS html)
-  body       <- filter (is "body" . tag) $ children root
-  content    <- filter (is "content" . id_) $ children body
-  interface  <- filter (is "interface" . id_) $ children content
-  definition <- filter (is "top" . class_) $ children interface
+  body        <- filter (is "body" . tag) $ children root
+  content     <- filter (is "content" . id_) $ children body
+  interface   <- filter (is "interface" . id_) $ children content
+  declaration <- filter (is "top" . class_) $ children interface
 
-  signature  <- findM (is "src" . class_) $ children definition
+  signature  <- findM (is "src" . class_) $ children declaration
   url <- map (toSourceUrl . attr "href")
     . findM (is "Source" . innerText)
     $ children signature
   let surl =  SourceLink (dropAnchor url) (takeAnchor url)
 
-  let constructors = filter (is "subs constructors" . class_) $ children definition
+  let constructors = filter (is "subs constructors" . class_) $ children declaration
   anchor <- foldMap anchors (signature : constructors)
 
   return (anchor, surl)
