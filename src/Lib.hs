@@ -6,10 +6,11 @@
 module Lib where
 
 import Debug.Trace
+import Control.Applicative ((<|>))
 import Control.Monad.Trans.Class (lift)
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Trans.State.Lazy (StateT)
-import Data.Functor ((<&>))
+import Data.Functor (void, (<&>))
 import Data.Function (on)
 import Data.Foldable (toList, fold)
 import Data.Bifunctor (bimap, second, first)
@@ -26,6 +27,7 @@ import Data.Char (chr, ord, isSpace)
 import Data.Set (Set)
 import Data.Map.Strict (Map)
 import Data.Text (Text)
+import System.Environment (getEnv)
 import System.IO (hPutStr, stdout)
 import System.IO.Temp
   ( withSystemTempDirectory
@@ -240,12 +242,12 @@ runCommand = \case
     target <- NonEmpty.head <$> getTargetGroup ix
     let ModuleLink url anchor = moduleLink target
     html <- fetch' url
-    viewInLess $ viewDeclDocs anchor $ toModuleDocs html
+    viewInEditor $ viewDeclDocs anchor $ toModuleDocs html
   ViewModuleDocs ix -> do
     tgroup <- getTargetGroup ix
     target <- promptSelectOne tgroup
     html <- fetch' (moduleLink target)
-    viewInLess $ viewModuleDocs $ toModuleDocs html
+    viewInEditor $ viewModuleDocs $ toModuleDocs html
   ViewSource ix -> do
     tgroup <- getTargetGroup ix
     target <- promptSelectOne tgroup
@@ -286,13 +288,13 @@ viewInTerminal doc = liftIO $ do
   P.displayIO stdout $ P.renderSmart 1 80 doc
   putStrLn ""
 
-viewInLess :: MonadIO m => P.Doc -> m ()
-viewInLess doc = liftIO $ do
-  let cmd = (Process.proc "less" ["-"]) { Process.std_in = Process.CreatePipe }
-  (Just hin, _, _, _) <- Process.createProcess cmd
+viewInEditor :: MonadIO m => P.Doc -> m ()
+viewInEditor doc = liftIO $ do
   width <- maybe 80 Terminal.width <$> Terminal.size
-  P.displayIO hin  $ P.renderSmart 1 width $ P.plain doc
-  putStrLn ""
+  withSystemTempFile "doc" $ \fullpath handle -> do
+    P.displayIO handle $ P.renderSmart 1 width $ P.plain doc
+    editor <- getEditor
+    void $ Process.system (editor ++ " " ++ fullpath)
 
 editSource :: Hoogle.Target -> M ()
 editSource target = do
@@ -306,9 +308,16 @@ editSource target = do
 view :: FileInfo -> M ()
 view (FileInfo filename mline content) = do
   let line = maybe "" (("+" <>) . show) mline
-  liftIO $ withSystemTempFile filename $ \fullpath handle -> do
-    Text.hPutStr handle content
-    Process.callCommand $ unwords ["nvim ", fullpath, line]
+  liftIO $ do
+    editor <- getEditor
+    withSystemTempFile filename $ \fullpath handle -> do
+      Text.hPutStr handle content
+      Process.callCommand $ unwords [editor, fullpath, line]
+
+getEditor :: IO String
+getEditor = getEnv "VISUAL" <|> getEnv "EDITOR" <|> defaultEditor
+  where
+    defaultEditor = error "no editor selected"
 
 data ModuleDocs = ModuleDocs
   { mTitle :: String
@@ -586,7 +595,7 @@ fileInfo (SourceLink _ anchor) (HTML doc) = head $ do
       root = XML.documentRoot page
   head_ <- filter (is "head" . tag) $ children root
   title <- filter (is "title" . tag) $ children head_
-  let filename = Text.unpack $ Text.replace "/" "." $ innerText title
+  let filename = Text.unpack $ Text.replace "/" "." $ innerText title <> ".hs"
   body <- filter (is "body" . tag) $ children root
   return $ FileInfo filename (anchorLine anchor body) (innerText body)
 
