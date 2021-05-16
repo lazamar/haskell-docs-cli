@@ -5,6 +5,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Lib where
 
+import Debug.Trace
 import Control.Monad.Trans.Class (lift)
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Trans.State.Lazy (StateT)
@@ -17,7 +18,7 @@ import Data.Either (either)
 import Data.List.Extra (unescapeHTML)
 import Data.List.NonEmpty (NonEmpty)
 import Control.Monad (foldM)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Text.Read (readMaybe)
 import Data.Maybe (catMaybes, fromMaybe, fromJust, mapMaybe, listToMaybe)
 import Data.List hiding (groupBy)
@@ -145,6 +146,24 @@ someFunc = do
   options <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
   CLI.runInputT CLI.defaultSettings
+    $ State.evalStateT
+      (do
+        runCommand (Search "HashMap")
+        runCommand (ViewExtendedDocs 1)
+      )
+      ShellState
+        { sLastResults = []
+        , sLastShown = 0
+        , sManager = manager
+        , sOptions = options
+        , sCache = mempty
+        }
+
+someFunc' :: IO ()
+someFunc' = do
+  options <- O.execParser cliOptions
+  manager <- Http.newManager Http.tlsManagerSettings
+  CLI.runInputT CLI.defaultSettings
     $ State.evalStateT loop ShellState
         { sLastResults = []
         , sLastShown = 0
@@ -215,26 +234,17 @@ runCommand = \case
         }
   ViewDocs ix -> do
     tgroup <- getTargetGroup ix
-    liftIO $ do
-      P.putDoc $ viewFull tgroup
-      putStrLn ""
+    printDoc $ viewFull tgroup
   ViewExtendedDocs ix -> do
     target <- NonEmpty.head <$> getTargetGroup ix
     let ModuleLink url anchor = moduleLink target
     html <- fetch' url
-    liftIO
-      $ P.putDoc
-      $ viewDeclDocs anchor
-      $ toModuleDocs html
+    printDoc $ viewDeclDocs anchor $ toModuleDocs html
   ViewModuleDocs ix -> do
     tgroup <- getTargetGroup ix
     target <- promptSelectOne tgroup
     html <- fetch' (moduleLink target)
-    liftIO
-      $ P.putDoc
-      $ viewModuleDocs
-      $ toModuleDocs html
-
+    printDoc $ viewModuleDocs $ toModuleDocs html
   ViewSource ix -> do
     tgroup <- getTargetGroup ix
     target <- promptSelectOne tgroup
@@ -269,6 +279,11 @@ promptSelectOne tgroup =
         Nothing -> do
           liftIO $ putStrLn "Number not recognised"
           promptSelectOne tgroup
+
+printDoc :: MonadIO m => P.Doc -> m ()
+printDoc doc = liftIO $ do
+  P.putDoc doc
+  putStrLn ""
 
 editSource :: Hoogle.Target -> M ()
 editSource target = do
@@ -404,6 +419,7 @@ prettyHTML = fromMaybe mempty . unXMLElement
         xs -> Just xs
     unXMLNode = \case
       XML.NodeInstruction _ -> Nothing
+      XML.NodeContent txt | Text.null txt -> Nothing
       XML.NodeContent txt -> Just
         $ P.vsep
         $ map (foldr (P.<+>) mempty . fmap P.text . words)
@@ -422,7 +438,7 @@ prettyHTML = fromMaybe mempty . unXMLElement
       "subs methods"      -> Just . P.indent 2
       "subs instances"    -> Just . P.indent 2
       "subs constructors" -> Just . P.indent 2
-      "inst-left"         -> Just . P.fillBreak 50
+      --"inst-left"         -> Just . P.fillBreak 4
       "top"               -> Just . mappend P.linebreak
       -- style
       "caption"           -> Just . P.bold
@@ -456,12 +472,16 @@ prettyHTML = fromMaybe mempty . unXMLElement
        "summary" -> Just . linebreak
        "ol"      -> const $ linebreak . P.vsep . numbered <$> unXMLChildren e
        "ul"      -> const $ P.vsep . map bullet <$> unXMLChildren e
-       "td"      -> if isInstanceDocumentation e then hide else Just . linebreak
+       "td"      | isInstanceDetails e -> hide
+                 | isInstanceShortInfo e -> Just . P.indent 2 . mappend P.linebreak
+                 | otherwise -> Just
+       "table"   -> const $ flip mappend P.linebreak . P.vsep <$> unXMLChildren e
        -- don't show instance details
        _         -> Just
 
-    isInstanceDocumentation e = attr "colspan" e == "2"
-    linebreak doc = doc <> P.linebreak
+    isInstanceDetails e = tag e == "td" && attr "colspan" e == "2"
+    isInstanceShortInfo e = tag e == "td" && class_ e == "doc"
+    linebreak doc = P.linebreak <> doc <> P.linebreak
     italics = P.Italicize True
     hide = const Nothing
 
