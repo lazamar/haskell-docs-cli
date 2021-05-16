@@ -434,10 +434,10 @@ prettyHTML = fromMaybe mempty . unXMLElement
     classStyle e = case class_ e of
       ""                  -> Just
       -- layout
-      "doc"               -> Just . P.indent 2
-      "subs methods"      -> Just . P.indent 2
-      "subs instances"    -> Just . P.indent 2
-      "subs constructors" -> Just . P.indent 2
+      "doc"               -> Just . P.nest 2
+      "subs methods"      -> Just . P.nest 2
+      "subs instances"    -> Just . P.nest 2
+      "subs constructors" -> Just . P.nest 2
       --"inst-left"         -> Just . P.fillBreak 4
       -- a declaration wrapper
       "top"               -> const $ mappend P.linebreak . P.vsep <$> unXMLChildren e
@@ -462,7 +462,7 @@ prettyHTML = fromMaybe mempty . unXMLElement
        "h6"      -> Just . mappend (P.text "###### ")
        "tt"      -> Just . P.green
        "pre"     -> const
-                      $ Just . P.indent 2 . P.black . linebreak . P.string . Text.unpack
+                      $ Just . P.nest 2 . P.black . linebreak . P.string . Text.unpack
                       $ innerText e
        "code"    -> Just . P.black
        "a"       -> Just . P.cyan
@@ -474,14 +474,13 @@ prettyHTML = fromMaybe mempty . unXMLElement
        "ol"      -> const $ linebreak . P.vsep . numbered <$> unXMLChildren e
        "ul"      -> const $ P.vsep . map bullet <$> unXMLChildren e
        "td"      | isInstanceDetails e -> hide
-                 | isInstanceShortInfo e -> Just . P.indent 2 . mappend P.linebreak
                  | otherwise -> Just
-       "table"   -> const $ flip mappend P.linebreak . P.vsep <$> unXMLChildren e
+       "table"   -> const $
+                    flip mappend P.linebreak . P.vsep . map bullet <$> unXMLChildren e
        -- don't show instance details
        _         -> Just
 
     isInstanceDetails e = tag e == "td" && attr "colspan" e == "2"
-    isInstanceShortInfo e = tag e == "td" && class_ e == "doc"
     linebreak doc = P.linebreak <> doc <> P.linebreak
     italics = P.Italicize True
     hide = const Nothing
@@ -526,7 +525,7 @@ numbered = zipWith f [1..]
     f n s = P.fill 2 (P.blue $ P.int n) P.<+> P.align s
 
 bullet :: P.Doc -> P.Doc
-bullet doc = P.fill 2 (P.char '•') P.<+> P.align doc
+bullet doc = P.fill 2 (P.char '-') <> P.align doc
 
 -- ================================
 -- Haddock handling
