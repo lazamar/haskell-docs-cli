@@ -141,8 +141,8 @@ splitOn x xs = y : splitOn x (drop 1 ys)
   where
     (y, ys) = break (== x) xs
 
-someFunc :: IO ()
-someFunc = do
+someFunc' :: IO ()
+someFunc' = do
   options <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
   CLI.runInputT CLI.defaultSettings
@@ -159,8 +159,8 @@ someFunc = do
         , sCache = mempty
         }
 
-someFunc' :: IO ()
-someFunc' = do
+someFunc :: IO ()
+someFunc = do
   options <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
   CLI.runInputT CLI.defaultSettings
@@ -311,12 +311,14 @@ toModuleDocs (HTML src) = head $ do
   let root = XML.documentRoot (HTML.parseLBS src)
   body    <- findM (is "body" . tag) $ children root
   content <- findM (is "content" . id_) $ children body
-  let mheader = findM (is "module-header" . id_) (children content)
+  let mtitle = do
+        h <- findM (is "module-header" . id_) (children content)
+        findM (is "caption" . class_) (children h)
       mdescription = findM (is "description" . id_) (children content)
   interface <- findM (is "interface" . id_) (children content)
   let decls = children interface
   return ModuleDocs
-    { mTitle = Text.unpack $ maybe "" innerText mheader
+    { mTitle = Text.unpack $ maybe "" innerText mtitle
     , mDescription = mdescription
     , mDeclarations = decls <&> \e -> (Set.fromList (anchors e), e)
     }
