@@ -10,7 +10,7 @@ import Control.Concurrent.MVar (MVar)
 import Control.Monad.Trans.State.Lazy (StateT)
 import Data.Functor ((<&>))
 import Data.Function (on)
-import Data.Foldable (toList)
+import Data.Foldable (toList, fold)
 import Data.Bifunctor (bimap, second, first)
 import Data.ByteString.Lazy (ByteString)
 import Data.Either (either)
@@ -395,66 +395,75 @@ viewDeclDocs anchor (ModuleDocs _ _ decls) =
 
 -- | Render Haddock's HTML
 prettyHTML :: XML.Element -> P.Doc
-prettyHTML = unXMLElement
+prettyHTML = fromMaybe mempty . unXMLElement
   where
-    unXMLElement e = style e $ foldMap unXMLNode $ XML.elementNodes e
+    unXMLElement e = style e . fold =<< unXMLChildren e
+    unXMLChildren e =
+      case mapMaybe unXMLNode (XML.elementNodes e) of
+        [] -> Nothing
+        xs -> Just xs
     unXMLNode = \case
-      XML.NodeInstruction _ -> mempty
-      XML.NodeContent txt -> P.vsep
+      XML.NodeInstruction _ -> Nothing
+      XML.NodeContent txt -> Just
+        $ P.vsep
         $ map (foldr (P.<+>) mempty . fmap P.text . words)
         $ lines
         $ unescapeHTML
         $ Text.unpack txt
-      XML.NodeComment _ -> mempty
+      XML.NodeComment _ -> Nothing
       XML.NodeElement e -> unXMLElement e
 
-    style e = tagStyle e . classStyle e
+    style e m = classStyle e m >>= tagStyle e
 
     classStyle e = case class_ e of
-      ""                  -> id
+      ""                  -> Just
       -- layout
-      "doc"               -> P.indent 2
-      "subs methods"      -> P.indent 2
-      "subs instances"    -> P.indent 2
-      "subs constructors" -> P.indent 2
-      "inst-left"         -> P.fillBreak 50
-      "top"               -> mappend P.linebreak
+      "doc"               -> Just . P.indent 2
+      "subs methods"      -> Just . P.indent 2
+      "subs instances"    -> Just . P.indent 2
+      "subs constructors" -> Just . P.indent 2
+      "inst-left"         -> Just . P.fillBreak 50
+      "top"               -> Just . mappend P.linebreak
       -- style
-      "caption"           -> P.bold
-      "name"              -> P.dullgreen
-      "def"               -> P.bold
-      "fixity"            -> P.black
+      "caption"           -> Just . P.bold
+      "name"              -> Just . P.dullgreen
+      "def"               -> Just . P.bold
+      "fixity"            -> Just . P.black
       -- invisible
       "link"              -> hide
       "selflink"          -> hide
       -- modify
-      "module-header"     -> const $ mconcat $ map unXMLElement $ findM (is "caption" . class_) (children e)
-      _                   -> id
+      "module-header"     -> const $ unXMLElement =<< findM (is "caption" . class_) (children e)
+      _                   -> Just
 
     tagStyle e = case tag e of
-       "h1"      -> mappend (P.text "# ")
-       "h2"      -> mappend (P.text "## ")
-       "h3"      -> mappend (P.text "### ")
-       "h4"      -> mappend (P.text "#### ")
-       "h5"      -> mappend (P.text "##### ")
-       "h6"      -> mappend (P.text "###### ")
-       "tt"      -> P.green
-       "pre"     -> const $ P.indent 2 . P.black . linebreak . P.string . Text.unpack $ innerText e
-       "code"    -> P.black
-       "a"       -> P.cyan
-       "b"       -> P.bold
-       "p"       -> linebreak
-       "dt"      -> P.bold . linebreak
-       "dd"      -> linebreak
-       "ol"      -> const $ linebreak $ P.vsep $ numbered $ map unXMLElement (children e)
-       "ul"      -> const $ P.vsep $ map (bullet . unXMLElement) (children e)
+       "h1"      -> Just . mappend (P.text "# ")
+       "h2"      -> Just . mappend (P.text "## ")
+       "h3"      -> Just . mappend (P.text "### ")
+       "h4"      -> Just . mappend (P.text "#### ")
+       "h5"      -> Just . mappend (P.text "##### ")
+       "h6"      -> Just . mappend (P.text "###### ")
+       "tt"      -> Just . P.green
+       "pre"     -> const
+                      $ Just . P.indent 2 . P.black . linebreak . P.string . Text.unpack
+                      $ innerText e
+       "code"    -> Just . P.black
+       "a"       -> Just . P.cyan
+       "b"       -> Just . P.bold
+       "p"       -> Just . linebreak
+       "dt"      -> Just . P.bold . linebreak
+       "dd"      -> Just . linebreak
+       "summary" -> Just . linebreak
+       "ol"      -> const $ linebreak . P.vsep . numbered <$> unXMLChildren e
+       "ul"      -> const $ P.vsep . map bullet <$> unXMLChildren e
+       "td"      -> if isInstanceDocumentation e then hide else Just . linebreak
        -- don't show instance details
-       "details" -> hide
-       _         -> id
+       _         -> Just
 
-    linebreak doc = P.linebreak <> doc <> P.linebreak
+    isInstanceDocumentation e = attr "colspan" e == "2"
+    linebreak doc = doc <> P.linebreak
     italics = P.Italicize True
-    hide = const mempty
+    hide = const Nothing
 
 viewFull :: TargetGroup -> P.Doc
 viewFull tgroup = P.vsep
