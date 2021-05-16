@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c95f0f269117fdacf1d239775af7dfc3a78e16a7b64692781f770ffca96810fa
+-- hash: 8825970653fe9946f61fd4505e2f4ea012a9bf7fa57cbf3701a06e4e3b91793b
 
 name:           hoogle-cli
 version:        0.1.0.0
@@ -48,6 +48,7 @@ library
     , optparse-applicative
     , process
     , temporary
+    , terminal-size
     , text
     , transformers
     , xml-conduit
@@ -77,6 +78,7 @@ executable hoogle-cli-exe
     , optparse-applicative
     , process
     , temporary
+    , terminal-size
     , text
     , transformers
     , xml-conduit
@@ -107,6 +109,7 @@ test-suite hoogle-cli-test
     , optparse-applicative
     , process
     , temporary
+    , terminal-size
     , text
     , transformers
     , xml-conduit

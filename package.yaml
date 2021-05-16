@@ -37,6 +37,7 @@ dependencies:
 - temporary
 - transformers
 - ansi-wl-pprint
+- terminal-size
 
 default-extensions:
 - ApplicativeDo

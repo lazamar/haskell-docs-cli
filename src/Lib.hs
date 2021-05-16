@@ -57,6 +57,7 @@ import qualified Text.HTML.DOM as HTML
 import qualified Text.PrettyPrint.ANSI.Leijen as P
 import qualified Text.PrettyPrint.ANSI.Leijen.Internal as P
 import qualified Text.XML as XML
+import qualified System.Console.Terminal.Size as Terminal
 
 data Options = Options
   { count :: Int
@@ -148,8 +149,8 @@ someFunc' = do
   CLI.runInputT CLI.defaultSettings
     $ State.evalStateT
       (do
-        runCommand (Search "HashMap")
-        runCommand (ViewExtendedDocs 1)
+        runCommand (Search "Data.Set")
+        runCommand (ViewDocs 1)
       )
       ShellState
         { sLastResults = []
@@ -289,14 +290,18 @@ viewInLess :: MonadIO m => P.Doc -> m ()
 viewInLess doc = liftIO $ do
   let cmd = (Process.proc "less" ["-"]) { Process.std_in = Process.CreatePipe }
   (Just hin, _, _, _) <- Process.createProcess cmd
-  P.hPutDoc hin $ P.plain doc
+  width <- maybe 80 Terminal.width <$> Terminal.size
+  P.displayIO hin  $ P.renderSmart 1 width $ P.plain doc
   putStrLn ""
 
 editSource :: Hoogle.Target -> M ()
 editSource target = do
-  srcLink <- sourceLink target
-  html <- fetch' srcLink
-  view (fileInfo srcLink html)
+  mlink <- sourceLink target
+  case mlink of
+    Nothing -> liftIO $ putStrLn "no source for file"
+    Just link -> do
+      html <- fetch' link
+      view (fileInfo link html)
 
 view :: FileInfo -> M ()
 view (FileInfo filename mline content) = do
@@ -412,10 +417,11 @@ viewModuleDocs (ModuleDocs name minfo decls) =
       , ""
       ]
 
-viewDeclDocs :: Anchor -> ModuleDocs -> P.Doc
-viewDeclDocs anchor (ModuleDocs _ _ decls) =
-  maybe mempty (prettyHTML . snd)
-    $ find (Set.member anchor . fst) decls
+viewDeclDocs :: Maybe Anchor -> ModuleDocs -> P.Doc
+viewDeclDocs manchor (ModuleDocs _ minfo decls) =
+  maybe mempty prettyHTML $ case manchor of
+    Nothing -> minfo
+    Just anchor -> snd <$> find (Set.member anchor . fst) decls
 
 -- | Render Haddock's HTML
 prettyHTML :: XML.Element -> P.Doc
@@ -437,12 +443,12 @@ prettyHTML = fromMaybe mempty . unXMLElement
       XML.NodeElement e -> unXMLElement e
 
     docwords f [] = P.fillCat (f [])
-    docwords f (' ':xs) = docwords (f . (P.space :)) xs
-    docwords f ('\n':xs) = docwords f xs
+    docwords f (x:xs)
+      | isSpace x = docwords (f . (P.space :)) $ dropWhile isSpace xs
     docwords f xs = docwords (f . (P.text w :)) ys
       where (w, ys) = break isSpace xs
 
-    style e m = classStyle e m >>= tagStyle e
+    style e m = classStyle e m  >>= tagStyle e
 
     classStyle e = case class_ e of
       ""                  -> Just
@@ -452,7 +458,9 @@ prettyHTML = fromMaybe mempty . unXMLElement
       "subs instances"    -> Just . P.nest 2
       "subs constructors" -> Just . P.nest 2
       -- a declaration wrapper
-      "top"               -> const $ mappend P.linebreak . P.vsep <$> unXMLChildren e
+      "top"               -> const
+                              $ Just . mappend P.hardline . P.vsep
+                              $ mapMaybe unXMLElement (children e)
       -- style
       "caption"           -> Just . P.bold
       "name"              -> Just . P.dullgreen
@@ -466,12 +474,12 @@ prettyHTML = fromMaybe mempty . unXMLElement
       _                   -> Just
 
     tagStyle e = case tag e of
-       "h1"      -> Just . mappend (P.text "# ")
-       "h2"      -> Just . mappend (P.text "## ")
-       "h3"      -> Just . mappend (P.text "### ")
-       "h4"      -> Just . mappend (P.text "#### ")
-       "h5"      -> Just . mappend (P.text "##### ")
-       "h6"      -> Just . mappend (P.text "###### ")
+       "h1"      -> Just . linebreak . mappend (P.text "# ")
+       "h2"      -> Just . linebreak . mappend (P.text "## ")
+       "h3"      -> Just . linebreak . mappend (P.text "### ")
+       "h4"      -> Just . linebreak . mappend (P.text "#### ")
+       "h5"      -> Just . linebreak . mappend (P.text "##### ")
+       "h6"      -> Just . linebreak . mappend (P.text "###### ")
        "tt"      -> Just . P.green
        "pre"     -> const
                       $ Just . P.nest 2 . P.black . linebreak . P.string . Text.unpack
@@ -484,17 +492,17 @@ prettyHTML = fromMaybe mempty . unXMLElement
        "dd"      -> Just . linebreak
        "summary" -> Just . linebreak
        "ol"      -> const $ Just . linebreak . P.vsep . numbered $ mapMaybe unXMLElement (children e)
-       "ul"      -> const $ Just . P.vsep . map bullet $ mapMaybe unXMLElement (children e)
+       "ul"      -> const $ Just . linebreak . P.vsep . map bullet $ mapMaybe unXMLElement (children e)
        "td"      | isInstanceDetails e -> hide
                  | otherwise -> Just
        "table"   -> const
-                      $ Just .  flip mappend P.linebreak . P.vsep . map bullet
+                      $ Just .  flip mappend P.hardline . P.vsep . map bullet
                       $ mapMaybe unXMLElement (children e)
        -- don't show instance details
        _         -> Just
 
     isInstanceDetails e = tag e == "td" && attr "colspan" e == "2"
-    linebreak doc = P.linebreak <> doc <> P.linebreak
+    linebreak doc = P.hardline <> doc <> P.hardline
     italics = P.Italicize True
     hide = const Nothing
 
@@ -547,7 +555,7 @@ bullet doc = P.fill 2 (P.char '-') <> P.align doc
 type Url = String
 
 -- | Link to an item in a module page
-data ModuleLink = ModuleLink Url Anchor
+data ModuleLink = ModuleLink Url (Maybe Anchor)
   deriving (Show)
 
 -- | Link to an item in a src page
@@ -603,17 +611,20 @@ anchorLine anchor
           else anchorNodes n (XML.elementNodes e)
 
 -- | Get URL for source file for a target
-sourceLink :: Hoogle.Target -> M SourceLink
+sourceLink :: Hoogle.Target -> M (Maybe SourceLink)
 sourceLink target = do
-  let mlink@(ModuleLink _ anchor) = moduleLink target
-  html <- fetch' mlink
-  let links = sourceLinks mlink html
-  case lookup anchor links of
-    Nothing -> error $ unlines $
-      [ "anchor missing in module docs"
-      , show mlink
-      ] ++ map show links
-    Just link -> return link
+  let mlink@(ModuleLink _ manchor) = moduleLink target
+  case manchor of
+    Nothing -> return Nothing
+    Just anchor -> do
+      html <- fetch' mlink
+      let links = sourceLinks mlink html
+      case lookup anchor links of
+        Nothing -> error $ unlines $
+          [ "anchor missing in module docs"
+          , show mlink
+          ] ++ map show links
+        Just link -> return $ Just link
 
 -- | Get URL for module documentation
 moduleLink :: Hoogle.Target -> ModuleLink
@@ -621,8 +632,10 @@ moduleLink target = ModuleLink (dropAnchor url) (takeAnchor url)
   where
     url = Hoogle.targetURL target
 
-takeAnchor :: Url -> Anchor
-takeAnchor = Text.pack . tail . dropWhile (/= '#')
+takeAnchor :: MonadFail m => Url -> m Anchor
+takeAnchor url = case dropWhile (/= '#') url of
+  [] -> fail "no anchor"
+  ('#':xs) -> return $ Text.pack xs
 
 dropAnchor :: Url -> Url
 dropAnchor = takeWhile (/= '#')
@@ -639,7 +652,8 @@ sourceLinks (ModuleLink moduleLink _) (HTML html) = do
   url <- map (toSourceUrl . attr "href")
     . findM (is "Source" . innerText)
     $ children signature
-  let surl =  SourceLink (dropAnchor url) (takeAnchor url)
+  anchor <- takeAnchor url
+  let surl = SourceLink (dropAnchor url) anchor
 
   let constructors = filter (is "subs constructors" . class_) $ children declaration
   anchor <- foldMap anchors (signature : constructors)
