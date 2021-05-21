@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8825970653fe9946f61fd4505e2f4ea012a9bf7fa57cbf3701a06e4e3b91793b
+-- hash: c1318537373a2704a2b265afc7c3ae1a5c7b2e5954d00aa60580829271db8c1c
 
 name:           hoogle-cli
 version:        0.1.0.0
@@ -32,7 +32,7 @@ library
       Paths_hoogle_cli
   hs-source-dirs:
       src
-  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections
+  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances
   build-depends:
       aeson
     , ansi-wl-pprint
@@ -60,8 +60,8 @@ executable hoogle-cli-exe
       Paths_hoogle_cli
   hs-source-dirs:
       app
-  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
   build-depends:
       aeson
     , ansi-wl-pprint
@@ -91,7 +91,7 @@ test-suite hoogle-cli-test
       Paths_hoogle_cli
   hs-source-dirs:
       test
-  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections
+  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       aeson

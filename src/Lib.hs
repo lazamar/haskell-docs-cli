@@ -1,38 +1,28 @@
-{-# LANGUAGE ApplicativeDo #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE FlexibleInstances #-}
 module Lib where
 
-import Debug.Trace
 import Control.Applicative ((<|>))
 import Control.Monad.Trans.Class (lift)
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Trans.State.Lazy (StateT)
 import Data.Functor (void, (<&>))
-import Data.Function (on)
 import Data.Foldable (toList, fold)
-import Data.Bifunctor (bimap, second, first)
+import Data.Bifunctor (bimap)
 import Data.ByteString.Lazy (ByteString)
-import Data.Either (either)
 import Data.List.Extra (unescapeHTML)
 import Data.List.NonEmpty (NonEmpty)
 import Control.Monad (foldM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Text.Read (readMaybe)
-import Data.Maybe (catMaybes, fromMaybe, fromJust, mapMaybe, listToMaybe)
+import Data.Maybe (fromMaybe, mapMaybe, listToMaybe)
 import Data.List hiding (groupBy)
-import Data.Char (chr, ord, isSpace)
+import Data.Char (isSpace)
 import Data.Set (Set)
 import Data.Map.Strict (Map)
 import Data.Text (Text)
 import System.Environment (getEnv)
-import System.IO (hPutStr, stdout, Handle)
+import System.IO (stdout, Handle)
 import System.IO.Temp
-  ( withSystemTempDirectory
-  , withSystemTempFile
-  , withTempFile
+  ( withSystemTempFile
   , withTempDirectory
   , getCanonicalTemporaryDirectory)
 
@@ -47,8 +37,6 @@ import qualified Data.Set as Set
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import qualified Data.Text.IO as Text (hPutStr)
-import qualified Data.Text.Lazy as LText
-import qualified Data.Text.Lazy.Encoding as LText
 import qualified Hoogle
 import qualified Network.HTTP.Client as Http
 import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
@@ -78,6 +66,7 @@ data ShellState = ShellState
 
 type M a = StateT ShellState (CLI.InputT IO) a
 
+defaultPageSize :: Int
 defaultPageSize = 100
 
 cliOptions :: O.ParserInfo Options
@@ -99,7 +88,6 @@ cliOptions = O.info parser $ O.header " \
 
 runSearch :: String -> M [Hoogle.Target]
 runSearch term = do
-  Options{..} <- State.gets sOptions
   req <- Http.parseRequest "https://hoogle.haskell.org"
     <&> Http.setQueryString
       [ ("mode", Just "json")
@@ -206,6 +194,7 @@ parseCommand str = case str of
         "mdoc" -> intCmd ViewModuleDocs
         "edoc" -> intCmd ViewExtendedDocs
         "quit" -> Right Quit
+        _ -> error $ "Unknown command: " <> cmd
   x | Just n <- readMaybe x -> Right (ViewDocs n)
   _ -> Right $ Search str
 
@@ -402,17 +391,9 @@ viewPackageInfoList
 
 viewPackageAndModule :: Hoogle.Target -> Maybe P.Doc
 viewPackageAndModule target = do
-  pkg <- viewPackage target
-  mod <- viewModule target
-  return $ pkg P.<+> mod
-  where
-    viewModule target = do
-      mod <- fst <$> Hoogle.targetModule target
-      return $ P.magenta (P.text mod)
-
-    viewPackage target = do
-      pkg <- fst <$> Hoogle.targetPackage target
-      return $ P.black (P.text pkg)
+  pkg <- P.magenta . P.text . fst <$> Hoogle.targetModule target
+  mol <- P.black . P.text . fst <$> Hoogle.targetPackage target
+  return $ pkg P.<+> mol
 
 viewModuleDocs :: ModuleDocs -> P.Doc
 viewModuleDocs (ModuleDocs name minfo decls) =
@@ -474,7 +455,7 @@ prettyHTML = fromMaybe mempty . unXMLElement
       "caption"           -> Just . P.bold
       "name"              -> Just . P.dullgreen
       "def"               -> Just . P.bold
-      "fixity"            -> Just . P.black
+      "fixity"            -> Just . italics . P.black
       -- invisible
       "link"              -> hide
       "selflink"          -> hide
@@ -547,7 +528,7 @@ unHTML = unescapeHTML . removeTags False
     removeTags False ('<':xs) = removeTags True xs
     removeTags True  ('>':xs) = removeTags False xs
     removeTags False (x:xs)   = x:removeTags False xs
-    removeTags True  (x:xs)   = removeTags True xs
+    removeTags True  (_:xs)   = removeTags True xs
 
 numbered :: [P.Doc] -> [P.Doc]
 numbered = zipWith f [1..]
@@ -642,15 +623,15 @@ moduleLink target = ModuleLink (dropAnchor url) (takeAnchor url)
     url = Hoogle.targetURL target
 
 takeAnchor :: MonadFail m => Url -> m Anchor
-takeAnchor url = case dropWhile (/= '#') url of
+takeAnchor url = case drop 1 $ dropWhile (/= '#') url of
   [] -> fail "no anchor"
-  ('#':xs) -> return $ Text.pack xs
+  xs -> return $ Text.pack xs
 
 dropAnchor :: Url -> Url
 dropAnchor = takeWhile (/= '#')
 
 sourceLinks :: ModuleLink -> HTML -> [(Anchor, SourceLink)]
-sourceLinks (ModuleLink moduleLink _) (HTML html) = do
+sourceLinks (ModuleLink modLink _) (HTML html) = do
   let root = XML.documentRoot (HTML.parseLBS html)
   body        <- filter (is "body" . tag) $ children root
   content     <- filter (is "content" . id_) $ children body
@@ -661,8 +642,8 @@ sourceLinks (ModuleLink moduleLink _) (HTML html) = do
   url <- map (toSourceUrl . attr "href")
     . findM (is "Source" . innerText)
     $ children signature
-  anchor <- takeAnchor url
-  let surl = SourceLink (dropAnchor url) anchor
+  srcAnchor <- takeAnchor url
+  let surl = SourceLink (dropAnchor url) srcAnchor
 
   let constructors = filter (is "subs constructors" . class_) $ children declaration
   anchor <- foldMap anchors (signature : constructors)
@@ -670,16 +651,16 @@ sourceLinks (ModuleLink moduleLink _) (HTML html) = do
   where
     parent = reverse . tail . dropWhile (/= '/') . reverse
 
-    toSourceUrl relativeUrl = parent moduleLink <> "/" <> Text.unpack relativeUrl
+    toSourceUrl relativeUrl = parent modLink <> "/" <> Text.unpack relativeUrl
 
 anchors :: XML.Element -> [Anchor]
 anchors el = f $ foldMap anchors (children el)
   where
     f = if isAnchor el then (id_ el :) else id
 
-    isAnchor el =
-      class_ el == "def" &&
-      (Text.isPrefixOf "t:" (id_ el) || Text.isPrefixOf "v:" (id_ el))
+    isAnchor e =
+      class_ e == "def" &&
+      (Text.isPrefixOf "t:" (id_ e) || Text.isPrefixOf "v:" (id_ e))
 
 findM :: (MonadFail m, Foldable t) => (a -> Bool) -> t a -> m a
 findM f x = do
