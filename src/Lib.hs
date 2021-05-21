@@ -28,7 +28,7 @@ import Data.Set (Set)
 import Data.Map.Strict (Map)
 import Data.Text (Text)
 import System.Environment (getEnv)
-import System.IO (hPutStr, stdout)
+import System.IO (hPutStr, stdout, Handle)
 import System.IO.Temp
   ( withSystemTempDirectory
   , withSystemTempFile
@@ -223,14 +223,12 @@ runCommand = \case
   Search str -> do
     options <- State.gets sOptions
     res <- toGroups <$> runSearch str
-    liftIO $ do
-      P.putDoc
+    viewInTerminal
         $ P.vsep
         $ reverse
         $ numbered
         $ take (pageSize options)
         $ map viewCompact res
-      putStrLn ""
     State.modify' $ \s -> s
         { sLastResults = res
         , sLastShown = pageSize options
@@ -283,17 +281,20 @@ promptSelectOne tgroup =
           promptSelectOne tgroup
 
 viewInTerminal :: MonadIO m => P.Doc -> m ()
-viewInTerminal doc = liftIO $ do
-  P.displayIO stdout $ P.renderSmart 1 80 doc
-  putStrLn ""
+viewInTerminal = printDoc stdout
 
 viewInEditor :: MonadIO m => P.Doc -> m ()
 viewInEditor doc = liftIO $ do
-  width <- maybe 80 Terminal.width <$> Terminal.size
   withSystemTempFile "doc" $ \fullpath handle -> do
-    P.displayIO handle $ P.renderSmart 1 width $ P.plain doc
+    printDoc handle $ P.plain doc
     editor <- getEditor
     void $ Process.system (editor ++ " " ++ fullpath)
+
+printDoc :: MonadIO m => Handle -> P.Doc -> m ()
+printDoc handle doc = liftIO $ do
+  width <- maybe 80 Terminal.width <$> Terminal.size
+  P.displayIO handle $ P.renderSmart 1 width doc
+  putStrLn ""
 
 editSource :: Hoogle.Target -> M ()
 editSource target = do
