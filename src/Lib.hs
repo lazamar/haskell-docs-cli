@@ -267,7 +267,6 @@ promptSelectOne tgroup =
         putStrLn "Select one:"
         P.putDoc
           $ P.vsep
-          $ reverse
           $ numbered
           $ mapMaybe viewPackageAndModule targets
         putStrLn ""
