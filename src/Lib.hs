@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 module Lib where
 
 import Control.Applicative ((<|>))
@@ -227,14 +228,18 @@ runCommand = \case
     viewInTerminal $ viewFull tgroup
   ViewExtendedDocs ix -> do
     target <- NonEmpty.head <$> getTargetGroup ix
-    let ModuleLink url anchor = moduleLink target
+    let ModuleLink url manchor = moduleLink target
     html <- fetch' url
-    viewInTerminal $ viewDeclDocs anchor $ toModuleDocs html
+    let modl = parseModuleDocs html
+        desc = case manchor of
+          Nothing -> prettyHTML <$> mDescription modl
+          Just an -> prettyDecl <$> lookupDecl an modl
+    viewInTerminal $ fromMaybe mempty desc
   ViewModuleDocs ix -> do
     tgroup <- getTargetGroup ix
     target <- promptSelectOne tgroup
     html <- fetch' (moduleLink target)
-    viewInEditor $ viewModuleDocs $ toModuleDocs html
+    viewInEditor $ prettyModule $ parseModuleDocs html
   ViewSource ix -> do
     tgroup <- getTargetGroup ix
     target <- promptSelectOne tgroup
@@ -311,13 +316,19 @@ getEditor = getEnv "VISUAL" <|> getEnv "EDITOR" <|> defaultEditor
 data ModuleDocs = ModuleDocs
   { mTitle :: String
   , mDescription :: Maybe XML.Element
-  , mDeclarations :: [(Set Anchor, XML.Element)]
+  , mDeclarations :: [DeclarationDocs]
+  }
+
+data DeclarationDocs = DeclarationDocs
+  { dAnchors :: Set Anchor
+  , dSignature :: XML.Element
+  , dContent :: [XML.Element]
   }
 
 type ModuleItem = XML.Element
 
-toModuleDocs :: HTML -> ModuleDocs
-toModuleDocs (HTML src) = head $ do
+parseModuleDocs :: HTML -> ModuleDocs
+parseModuleDocs (HTML src) = head $ do
   let root = XML.documentRoot (HTML.parseLBS src)
   body    <- findM (is "body" . tag) $ children root
   content <- findM (is "content" . id_) $ children body
@@ -326,11 +337,21 @@ toModuleDocs (HTML src) = head $ do
         findM (is "caption" . class_) (children h)
       mdescription = findM (is "description" . id_) (children content)
   interface <- findM (is "interface" . id_) (children content)
-  let decls = children interface
   return ModuleDocs
     { mTitle = Text.unpack $ maybe "" innerText mtitle
     , mDescription = mdescription
-    , mDeclarations = decls <&> \e -> (Set.fromList (anchors e), e)
+    , mDeclarations = mapMaybe parseDeclaration $ children interface
+    }
+
+parseDeclaration :: XML.Element -> Maybe DeclarationDocs
+parseDeclaration el = do
+  decl <- findM (is "top" . class_) [el]
+  ([sig], content) <- return
+    $ partition (is "src" . class_) $ children decl
+  return DeclarationDocs
+    { dAnchors = Set.fromList $ anchors el
+    , dSignature = sig
+    , dContent = content
     }
 
 withTempPath :: String -> (String -> IO a) -> IO a
@@ -395,11 +416,11 @@ viewPackageAndModule target = do
   mol <- P.black . P.text . fst <$> Hoogle.targetPackage target
   return $ pkg P.<+> mol
 
-viewModuleDocs :: ModuleDocs -> P.Doc
-viewModuleDocs (ModuleDocs name minfo decls) =
+prettyModule :: ModuleDocs -> P.Doc
+prettyModule (ModuleDocs name minfo decls) =
   P.vsep $ [title]
     ++ [ prettyHTML info | Just info <- [minfo] ]
-    ++ [ prettyHTML decl | (_, decl) <- decls ]
+    ++ [ prettyDecl decl | decl <- decls ]
   where
     title = P.vsep
       [ P.text name
@@ -407,11 +428,85 @@ viewModuleDocs (ModuleDocs name minfo decls) =
       , ""
       ]
 
-viewDeclDocs :: Maybe Anchor -> ModuleDocs -> P.Doc
-viewDeclDocs manchor (ModuleDocs _ minfo decls) =
-  maybe mempty prettyHTML $ case manchor of
-    Nothing -> minfo
-    Just anchor -> snd <$> find (Set.member anchor . fst) decls
+prettyDecl :: DeclarationDocs -> P.Doc
+prettyDecl DeclarationDocs{..} =
+  P.vsep $ map prettyHTML $ dSignature:dContent
+
+lookupDecl :: Anchor -> ModuleDocs -> Maybe DeclarationDocs
+lookupDecl anchor (ModuleDocs _ _ decls) =
+  find (Set.member anchor . dAnchors) decls
+
+viewFull :: TargetGroup -> P.Doc
+viewFull tgroup = P.vsep
+  [ divider
+  , content
+  , divider
+  ]
+  where
+    divider = P.black $ P.text $ replicate 50 '='
+    representative = NonEmpty.head tgroup
+    content = P.vsep $
+      [ viewItem representative
+      , viewPackageInfoList tgroup
+      , prettyHTML $ wrapHTML $ Hoogle.targetDocs representative
+      ] ++ reverse (P.cyan . P.text . Hoogle.targetURL <$> toList tgroup)
+
+wrapHTML :: String -> XML.Element
+wrapHTML
+  = XML.documentRoot
+  . HTML.parseLBS
+  . LB.fromStrict
+  . Text.encodeUtf8
+  . Text.pack
+  . (\v -> "<div>" <> v <> "</div>")
+
+unHTML :: String -> String
+unHTML = unescapeHTML . removeTags False
+  where
+    -- remove html tags
+    removeTags _ [] = []
+    removeTags False ('<':xs) = removeTags True xs
+    removeTags True  ('>':xs) = removeTags False xs
+    removeTags False (x:xs)   = x:removeTags False xs
+    removeTags True  (_:xs)   = removeTags True xs
+
+numbered :: [P.Doc] -> [P.Doc]
+numbered = zipWith f [1..]
+  where
+    f n s = P.fill 2 (P.blue $ P.int n) P.<+> P.align s
+
+bullet :: P.Doc -> P.Doc
+bullet doc = P.fill 2 (P.char '-') <> P.align doc
+
+-- ================================
+-- Haddock handling
+-- ================================
+
+type Url = String
+
+-- | Link to an item in a module page
+data ModuleLink = ModuleLink Url (Maybe Anchor)
+  deriving (Show)
+
+-- | Link to an item in a src page
+data SourceLink = SourceLink Url Anchor
+  deriving (Show)
+
+type FileName = String
+
+type FileContent = Text
+
+type Anchor = Text
+
+newtype RelativeUrl = RelativeUrl Text
+
+newtype HTML = HTML ByteString
+
+data FileInfo = FileInfo
+  { fName :: FileName
+  , fLine :: Maybe Int
+  , fContent :: FileContent
+  }
 
 -- | Render Haddock's HTML
 prettyHTML :: XML.Element -> P.Doc
@@ -496,77 +591,6 @@ prettyHTML = fromMaybe mempty . unXMLElement
     italics = P.Italicize True
     hide = const Nothing
 
-viewFull :: TargetGroup -> P.Doc
-viewFull tgroup = P.vsep
-  [ divider
-  , content
-  , divider
-  ]
-  where
-    divider = P.black $ P.text $ replicate 50 '='
-    representative = NonEmpty.head tgroup
-    content = P.vsep $
-      [ viewItem representative
-      , viewPackageInfoList tgroup
-      , prettyHTML $ wrapHTML $ Hoogle.targetDocs representative
-      ] ++ reverse (P.cyan . P.text . Hoogle.targetURL <$> toList tgroup)
-
-wrapHTML :: String -> XML.Element
-wrapHTML
-  = XML.documentRoot
-  . HTML.parseLBS
-  . LB.fromStrict
-  . Text.encodeUtf8
-  . Text.pack
-  . (\v -> "<div>" <> v <> "</div>")
-
-unHTML :: String -> String
-unHTML = unescapeHTML . removeTags False
-  where
-    -- remove html tags
-    removeTags _ [] = []
-    removeTags False ('<':xs) = removeTags True xs
-    removeTags True  ('>':xs) = removeTags False xs
-    removeTags False (x:xs)   = x:removeTags False xs
-    removeTags True  (_:xs)   = removeTags True xs
-
-numbered :: [P.Doc] -> [P.Doc]
-numbered = zipWith f [1..]
-  where
-    f n s = P.fill 2 (P.blue $ P.int n) P.<+> P.align s
-
-bullet :: P.Doc -> P.Doc
-bullet doc = P.fill 2 (P.char '-') <> P.align doc
-
--- ================================
--- Haddock handling
--- ================================
-
-type Url = String
-
--- | Link to an item in a module page
-data ModuleLink = ModuleLink Url (Maybe Anchor)
-  deriving (Show)
-
--- | Link to an item in a src page
-data SourceLink = SourceLink Url Anchor
-  deriving (Show)
-
-type FileName = String
-
-type FileContent = Text
-
-type Anchor = Text
-
-newtype RelativeUrl = RelativeUrl Text
-
-newtype HTML = HTML ByteString
-
-data FileInfo = FileInfo
-  { fName :: FileName
-  , fLine :: Maybe Int
-  , fContent :: FileContent
-  }
 
 -- | Convert an html page into a src file and inform of line
 -- number of SourceLink
