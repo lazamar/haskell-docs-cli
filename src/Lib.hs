@@ -58,12 +58,18 @@ data Options = Options
 type TargetGroup = NonEmpty Hoogle.Target
 
 data ShellState = ShellState
-  { sLastResults :: [TargetGroup]
-  , sLastShown :: Int
+  { sContext :: Context
   , sManager :: Http.Manager
   , sCache :: Map Url (MVar ByteString)
   , sOptions :: Options
   }
+
+-- | Commands with indexes reference the context
+data Context
+  -- | results of a search
+  = ContextEmpty
+  | ContextSearch String [TargetGroup]
+  | ContextModule ModuleDocs
 
 type M a = StateT ShellState (CLI.InputT IO) a
 
@@ -144,8 +150,7 @@ someFunc' = do
         runCommand (ViewDocs 1)
       )
       ShellState
-        { sLastResults = []
-        , sLastShown = 0
+        { sContext = ContextEmpty
         , sManager = manager
         , sOptions = options
         , sCache = mempty
@@ -157,8 +162,7 @@ someFunc = do
   manager <- Http.newManager Http.tlsManagerSettings
   CLI.runInputT CLI.defaultSettings
     $ State.evalStateT loop ShellState
-        { sLastResults = []
-        , sLastShown = 0
+        { sContext = ContextEmpty
         , sManager = manager
         , sOptions = options
         , sCache = mempty
@@ -171,8 +175,9 @@ data Cmd
   | ViewExtendedDocs Int
   -- ^ declaration's docs available in the haddock page
   | ViewModuleDocs Int
-  | ViewModuleInterface Int
   -- ^ full haddock for module
+  | ViewModuleInterface Int
+  -- ^ all function signatures
   | ViewSource Int
   | Quit
 
@@ -203,6 +208,13 @@ parseCommand str = case str of
 
 loop :: M ()
 loop = do
+  context <- State.gets sContext
+  liftIO $ putStrLn $ ("context: " <>) $
+    case context of
+      ContextEmpty -> ""
+      ContextSearch term _ -> "search " <> term
+      ContextModule modl -> "module " <> mTitle modl
+
   minput <- lift $ CLI.getInputLine "hoogle> "
   case parseCommand $ fromMaybe "" minput of
     Left err -> liftIO (putStrLn err) >> loop
@@ -222,14 +234,20 @@ runCommand = \case
         $ take (pageSize options)
         $ map viewCompact res
     State.modify' $ \s -> s
-        { sLastResults = res
-        , sLastShown = pageSize options
+        { sContext = ContextSearch str res
         }
   ViewDocs ix -> do
-    tgroup <- getTargetGroup ix
-    viewInTerminal $ viewFull tgroup
-  ViewExtendedDocs ix -> do
-    target <- NonEmpty.head <$> getTargetGroup ix
+    context <- State.gets sContext
+    case context of
+      ContextEmpty -> liftIO $ putStrLn "no context"
+      ContextSearch _ _ ->
+        getTargetGroup ix $ \tgroup -> do
+        viewInTerminal $ viewFull tgroup
+      ContextModule ModuleDocs{..} ->
+        viewInTerminal $ prettyDecl $ mDeclarations !! (ix - 1)
+  ViewExtendedDocs ix ->
+    getTargetGroup ix $ \tgroup -> do
+    let target = NonEmpty.head tgroup
     let ModuleLink url manchor = moduleLink target
     html <- fetch' url
     let modl = parseModuleDocs html
@@ -237,26 +255,36 @@ runCommand = \case
           Nothing -> prettyHTML <$> mDescription modl
           Just an -> prettyDecl <$> lookupDecl an modl
     viewInTerminal $ fromMaybe mempty desc
-  ViewModuleInterface ix -> do
-    tgroup <- getTargetGroup ix
+  ViewModuleInterface ix ->
+    getTargetGroup ix $ \tgroup -> do
     target <- promptSelectOne tgroup
     html <- fetch' (moduleLink target)
-    let signatures = map dSignature $ mDeclarations $ parseModuleDocs html
+    let modl = parseModuleDocs html
+    let signatures = map dSignature $ mDeclarations modl
+    State.modify' $ \s -> s
+        { sContext = ContextModule modl
+        }
     viewInTerminal $ P.vsep $ numbered $ map prettyHTML signatures
-  ViewModuleDocs ix -> do
-    tgroup <- getTargetGroup ix
+  ViewModuleDocs ix ->
+    getTargetGroup ix $ \tgroup -> do
     target <- promptSelectOne tgroup
     html <- fetch' (moduleLink target)
     viewInEditor $ prettyModule $ parseModuleDocs html
-  ViewSource ix -> do
-    tgroup <- getTargetGroup ix
+  ViewSource ix ->
+    getTargetGroup ix $ \tgroup -> do
     target <- promptSelectOne tgroup
     editSource target
 
-getTargetGroup :: Int -> M TargetGroup
-getTargetGroup ix = do
-    results <- State.gets sLastResults
-    return $ results !! (ix - 1)
+withSearchContext :: ([TargetGroup] -> M ()) -> M ()
+withSearchContext f = do
+  context <- State.gets sContext
+  case context of
+    ContextSearch _ results -> f results
+    _ -> liftIO $ putStrLn "No search results available"
+
+getTargetGroup :: Int -> (TargetGroup -> M ()) -> M ()
+getTargetGroup ix f =
+  withSearchContext $ f . (!! (ix - 1))
 
 promptSelectOne :: TargetGroup -> M Hoogle.Target
 promptSelectOne tgroup =
