@@ -171,12 +171,13 @@ data Cmd
   | ViewExtendedDocs Int
   -- ^ declaration's docs available in the haddock page
   | ViewModuleDocs Int
+  | ViewModuleInterface Int
   -- ^ full haddock for module
   | ViewSource Int
   | Quit
 
 commands :: [String]
-commands = [ "src", "quit", "mdoc", "edoc" ]
+commands = [ "src", "quit", "mdoc", "edoc", "interface" ]
 
 fillPrefix :: String -> Maybe String
 fillPrefix v = find (v `isPrefixOf`) commands
@@ -194,6 +195,7 @@ parseCommand str = case str of
         "src" -> intCmd ViewSource
         "mdoc" -> intCmd ViewModuleDocs
         "edoc" -> intCmd ViewExtendedDocs
+        "interface" -> intCmd ViewModuleInterface
         "quit" -> Right Quit
         _ -> error $ "Unknown command: " <> cmd
   x | Just n <- readMaybe x -> Right (ViewDocs n)
@@ -235,6 +237,12 @@ runCommand = \case
           Nothing -> prettyHTML <$> mDescription modl
           Just an -> prettyDecl <$> lookupDecl an modl
     viewInTerminal $ fromMaybe mempty desc
+  ViewModuleInterface ix -> do
+    tgroup <- getTargetGroup ix
+    target <- promptSelectOne tgroup
+    html <- fetch' (moduleLink target)
+    let signatures = map dSignature $ mDeclarations $ parseModuleDocs html
+    viewInTerminal $ P.vsep $ numbered $ map prettyHTML signatures
   ViewModuleDocs ix -> do
     tgroup <- getTargetGroup ix
     target <- promptSelectOne tgroup
@@ -257,11 +265,10 @@ promptSelectOne tgroup =
     targets -> do
       liftIO $ do
         putStrLn "Select one:"
-        P.putDoc
+        viewInTerminal
           $ P.vsep
           $ numbered
           $ mapMaybe viewPackageAndModule targets
-        putStrLn ""
 
       num <- lift $ CLI.getInputLine ": "
       case readMaybe =<< num of
@@ -348,11 +355,17 @@ parseDeclaration el = do
   decl <- findM (is "top" . class_) [el]
   ([sig], content) <- return
     $ partition (is "src" . class_) $ children decl
+
   return DeclarationDocs
     { dAnchors = Set.fromList $ anchors el
-    , dSignature = sig
+    , dSignature = asTag "div" sig
     , dContent = content
     }
+  where
+    asTag t e = e
+      { XML.elementName =
+          (XML.elementName e) { XML.nameLocalName = t }
+      }
 
 withTempPath :: String -> (String -> IO a) -> IO a
 withTempPath path f = do
