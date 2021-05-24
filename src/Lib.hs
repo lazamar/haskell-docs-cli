@@ -50,9 +50,8 @@ import qualified Text.PrettyPrint.ANSI.Leijen.Internal as P
 import qualified Text.XML as XML
 import qualified System.Console.Terminal.Size as Terminal
 
-data Options = Options
+newtype Options = Options
   { count :: Int
-  , pageSize :: Int
   }
 
 type TargetGroup = NonEmpty Hoogle.Target
@@ -73,9 +72,6 @@ data Context
 
 type M a = StateT ShellState (CLI.InputT IO) a
 
-defaultPageSize :: Int
-defaultPageSize = 100
-
 cliOptions :: O.ParserInfo Options
 cliOptions = O.info parser $ O.header " \
   \Hoogle CLI is a command line interface to Hoogle.\
@@ -87,11 +83,6 @@ cliOptions = O.info parser $ O.header " \
           <> O.metavar "INT"
           <> O.help "String to search for"
           <> O.value 20)
-      <*> O.option O.auto
-          (O.long "page-size"
-          <> O.metavar "INT"
-          <> O.help "How many results to show per page"
-          <> O.value defaultPageSize)
 
 runSearch :: String -> M [Hoogle.Target]
 runSearch term = do
@@ -169,7 +160,8 @@ someFunc = do
         }
 
 data Cmd
-  = Search String
+  = ViewContext
+  | Search String
   | ViewDocs Int
   -- ^ docs provided in the hoogle response
   | ViewExtendedDocs Int
@@ -204,17 +196,11 @@ parseCommand str = case str of
         "quit" -> Right Quit
         _ -> error $ "Unknown command: " <> cmd
   x | Just n <- readMaybe x -> Right (ViewDocs n)
+  [] -> Right ViewContext
   _ -> Right $ Search str
 
 loop :: M ()
 loop = do
-  context <- State.gets sContext
-  liftIO $ putStrLn $ ("context: " <>) $
-    case context of
-      ContextEmpty -> ""
-      ContextSearch term _ -> "search " <> term
-      ContextModule modl -> "module " <> mTitle modl
-
   minput <- lift $ CLI.getInputLine "hoogle> "
   case parseCommand $ fromMaybe "" minput of
     Left err -> liftIO (putStrLn err) >> loop
@@ -223,16 +209,20 @@ loop = do
 
 runCommand :: Cmd -> M ()
 runCommand = \case
-  Quit -> return ()
+  Quit -> error "impossible"
+  ViewContext -> do
+    context <- State.gets sContext
+    case context of
+      ContextEmpty -> liftIO $ putStrLn "no context"
+      ContextSearch term results -> do
+        viewSearchResults results
+        liftIO $ putStrLn $ "search: " <> term
+      ContextModule mdocs -> do
+        viewModuleInterface mdocs
+        liftIO $ putStrLn $ "module: " <> mTitle mdocs
   Search str -> do
-    options <- State.gets sOptions
     res <- toGroups <$> runSearch str
-    viewInTerminal
-        $ P.vsep
-        $ reverse
-        $ numbered
-        $ take (pageSize options)
-        $ map viewCompact res
+    viewSearchResults res
     State.modify' $ \s -> s
         { sContext = ContextSearch str res
         }
@@ -243,8 +233,8 @@ runCommand = \case
       ContextSearch _ _ ->
         getTargetGroup ix $ \tgroup -> do
         viewInTerminal $ viewFull tgroup
-      ContextModule ModuleDocs{..} ->
-        viewInTerminal $ prettyDecl $ mDeclarations !! (ix - 1)
+      ContextModule mdocs ->
+        viewInTerminal $ prettyDecl $ mDeclarations mdocs !! (ix - 1)
   ViewExtendedDocs ix ->
     getTargetGroup ix $ \tgroup -> do
     let target = NonEmpty.head tgroup
@@ -260,11 +250,10 @@ runCommand = \case
     target <- promptSelectOne tgroup
     html <- fetch' (moduleLink target)
     let modl = parseModuleDocs html
-    let signatures = map dSignature $ mDeclarations modl
     State.modify' $ \s -> s
         { sContext = ContextModule modl
         }
-    viewInTerminal $ P.vsep $ numbered $ map prettyHTML signatures
+    viewModuleInterface modl
   ViewModuleDocs ix ->
     getTargetGroup ix $ \tgroup -> do
     target <- promptSelectOne tgroup
@@ -285,6 +274,24 @@ withSearchContext f = do
 getTargetGroup :: Int -> (TargetGroup -> M ()) -> M ()
 getTargetGroup ix f =
   withSearchContext $ f . (!! (ix - 1))
+
+viewSearchResults :: MonadIO m => [TargetGroup] -> m ()
+viewSearchResults
+  = viewInTerminal
+  . P.vsep
+  . reverse
+  . numbered
+  . map viewCompact
+
+viewModuleInterface :: MonadIO m => ModuleDocs -> m ()
+viewModuleInterface
+  = viewInTerminal
+  . P.vsep
+  . numbered
+  . map prettyHTML
+  . map dSignature
+  . mDeclarations
+
 
 promptSelectOne :: TargetGroup -> M Hoogle.Target
 promptSelectOne tgroup =
