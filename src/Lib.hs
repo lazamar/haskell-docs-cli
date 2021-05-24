@@ -166,7 +166,7 @@ data Cmd
   -- ^ docs provided in the hoogle response
   | ViewExtendedDocs Int
   -- ^ declaration's docs available in the haddock page
-  | ViewModuleDocs Int
+  | ViewModuleDocs (Maybe Int)
   -- ^ full haddock for module
   | ViewModuleInterface Int
   -- ^ all function signatures
@@ -182,7 +182,7 @@ fillPrefix v = find (v `isPrefixOf`) commands
 parseCommand :: String -> Either String Cmd
 parseCommand str = case str of
   (':':xs) -> do
-    let (mcmd, args) = bimap fillPrefix tail $ break isSpace xs
+    let (mcmd, args) = bimap fillPrefix (drop 1) $ break isSpace xs
     cmd <- maybe (Left "Unknown command") Right mcmd
     let intCmd f
           | Just n <- readMaybe args = Right (f n)
@@ -190,7 +190,9 @@ parseCommand str = case str of
             "Command :" <> cmd <> "expects an integer argument"
     case cmd of
         "src" -> intCmd ViewSource
-        "mdoc" -> intCmd ViewModuleDocs
+        "mdoc"
+          | null args -> Right $ ViewModuleDocs Nothing
+          | otherwise -> intCmd (ViewModuleDocs . Just)
         "edoc" -> intCmd ViewExtendedDocs
         "interface" -> intCmd ViewModuleInterface
         "quit" -> Right Quit
@@ -254,11 +256,13 @@ runCommand = \case
         { sContext = ContextModule modl
         }
     viewModuleInterface modl
-  ViewModuleDocs ix ->
+  ViewModuleDocs Nothing ->
+    withModuleContext viewModuleDocs
+  ViewModuleDocs (Just ix) ->
     getTargetGroup ix $ \tgroup -> do
     target <- promptSelectOne tgroup
     html <- fetch' (moduleLink target)
-    viewInEditor $ prettyModule $ parseModuleDocs html
+    viewModuleDocs (parseModuleDocs html)
   ViewSource ix ->
     getTargetGroup ix $ \tgroup -> do
     target <- promptSelectOne tgroup
@@ -270,6 +274,13 @@ withSearchContext f = do
   case context of
     ContextSearch _ results -> f results
     _ -> liftIO $ putStrLn "No search results available"
+
+withModuleContext :: (ModuleDocs -> M ()) -> M ()
+withModuleContext f = do
+  context <- State.gets sContext
+  case context of
+    ContextModule mdocs -> f mdocs
+    _ -> liftIO $ putStrLn "No module selected"
 
 getTargetGroup :: Int -> (TargetGroup -> M ()) -> M ()
 getTargetGroup ix f =
@@ -292,6 +303,8 @@ viewModuleInterface
   . map dSignature
   . mDeclarations
 
+viewModuleDocs :: MonadIO m => ModuleDocs -> m ()
+viewModuleDocs = viewInEditor . prettyModule
 
 promptSelectOne :: TargetGroup -> M Hoogle.Target
 promptSelectOne tgroup =
