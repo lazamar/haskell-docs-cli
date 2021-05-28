@@ -56,7 +56,7 @@ data ShellState = ShellState
 data Context
   = ContextEmpty                        -- ^ Nothing selected
   | ContextSearch String [TargetGroup]  -- ^ within search results
-  | ContextModule ModuleDocs            -- ^ looking at module docs
+  | ContextModule Module                -- ^ looking at module docs
 
 type Index = Int
 
@@ -233,7 +233,7 @@ withSearchContext f = do
     ContextSearch _ results -> f results
     _ -> liftIO $ putStrLn "No search results available"
 
-withModuleContext :: (ModuleDocs -> M ()) -> M ()
+withModuleContext :: (Module -> M ()) -> M ()
 withModuleContext f = do
   context <- State.gets sContext
   case context of
@@ -252,7 +252,7 @@ viewSearchResults
   . numbered
   . map viewCompact
 
-viewModuleInterface :: MonadIO m => ModuleDocs -> m ()
+viewModuleInterface :: MonadIO m => Module -> m ()
 viewModuleInterface
   = viewInTerminal
   . P.vsep
@@ -261,7 +261,7 @@ viewModuleInterface
   . map dSignature
   . mDeclarations
 
-viewModuleDocs :: MonadIO m => ModuleDocs -> m ()
+viewModuleDocs :: MonadIO m => Module -> m ()
 viewModuleDocs = viewInEditor . prettyModule
 
 promptSelectOne :: TargetGroup -> M Hoogle.Target
@@ -332,11 +332,11 @@ instance HasUrl ModuleLink where getUrl (ModuleLink url _) = url
 instance HasUrl SourceLink where getUrl (SourceLink url _) = url
 instance HasUrl Url        where getUrl url = url
 
-fetch' :: HasUrl a => a -> M Html
+fetch' :: HasUrl a => a -> M HtmlPage
 fetch' x = do
   req <- liftIO $ Http.parseRequest $ getUrl x
   src <- fetch req
-  return (parseHtml src)
+  return (parseHtmlDocument src)
 
 fetch :: Http.Request -> M LB.ByteString
 fetch req = do
@@ -379,8 +379,8 @@ viewPackageAndModule target = do
   mol <- P.black . P.text . fst <$> Hoogle.targetPackage target
   return $ pkg P.<+> mol
 
-prettyModule :: ModuleDocs -> P.Doc
-prettyModule (ModuleDocs name minfo decls _) =
+prettyModule :: Module -> P.Doc
+prettyModule (Module name minfo decls _) =
   P.vsep $ [title]
     ++ [ prettyHtml info | Just info <- [minfo] ]
     ++ [ prettyDecl decl | decl <- decls ]
@@ -391,12 +391,12 @@ prettyModule (ModuleDocs name minfo decls _) =
       , ""
       ]
 
-prettyDecl :: DeclarationDocs -> P.Doc
-prettyDecl DeclarationDocs{..} =
+prettyDecl :: Declaration -> P.Doc
+prettyDecl Declaration{..} =
   P.vsep $ map prettyHtml $ dSignature:dContent
 
-lookupDecl :: Anchor -> ModuleDocs -> Maybe DeclarationDocs
-lookupDecl anchor (ModuleDocs _ _ decls _) =
+lookupDecl :: Anchor -> Module -> Maybe Declaration
+lookupDecl anchor (Module _ _ decls _) =
   find (Set.member anchor . dAnchors) decls
 
 viewFull :: TargetGroup -> P.Doc

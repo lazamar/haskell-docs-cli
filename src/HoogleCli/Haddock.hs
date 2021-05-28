@@ -1,7 +1,10 @@
 {-# LANGUAGE LambdaCase #-}
 module HoogleCli.Haddock
   ( Html
-  , parseHtml
+  , HtmlPage
+  , Module(..)
+  , Declaration(..)
+  , parseHtmlDocument
   , parseModuleDocs
   , prettyHtml
   , numbered
@@ -22,6 +25,7 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import Data.List hiding (groupBy)
 import Data.Char (isSpace)
 import Data.Text (Text)
+import Data.Set (Set)
 import Data.ByteString.Lazy (ByteString)
 
 import qualified Data.ByteString.Lazy as LB
@@ -35,23 +39,41 @@ import qualified Data.Set as Set
 import qualified Text.PrettyPrint.ANSI.Leijen as P
 import qualified Text.PrettyPrint.ANSI.Leijen.Internal as P
 
-newtype Html = Html ByteString
+-- | An html element
+newtype Html = Html Xml.Element
 
-parseHtml :: ByteString -> Html
-parseHtml = Html
+-- | The root of an html page
+newtype HtmlPage = HtmlPage Xml.Element
 
-parseHoogleHtml :: String -> Xml.Element
+-- | An exported declaration
+data Declaration = Declaration
+  { dAnchors :: Set Anchor
+  , dSignature :: Html
+  , dContent :: [Html]
+  }
+
+data Module = Module
+  { mTitle :: String
+  , mDescription :: Maybe Html
+  , mDeclarations :: [Declaration]
+  , mUrl :: Url
+  }
+
+parseHtmlDocument :: ByteString -> HtmlPage
+parseHtmlDocument = HtmlPage . Xml.documentRoot . Html.parseLBS
+
+parseHoogleHtml :: String -> Html
 parseHoogleHtml
-  = Xml.documentRoot
+  = Html
+  . Xml.documentRoot
   . Html.parseLBS
   . LB.fromStrict
   . Text.encodeUtf8
   . Text.pack
   . (\v -> "<div>" <> v <> "</div>")
 
-parseModuleDocs :: Url -> Html -> ModuleDocs
-parseModuleDocs url (Html src) = head $ do
-  let root = Xml.documentRoot (Html.parseLBS src)
+parseModuleDocs :: Url -> HtmlPage -> Module
+parseModuleDocs url (HtmlPage root) = head $ do
   body    <- findM (is "body" . tag) $ children root
   content <- findM (is "content" . id_) $ children body
   let mtitle = do
@@ -59,23 +81,23 @@ parseModuleDocs url (Html src) = head $ do
         findM (is "caption" . class_) (children h)
       mdescription = findM (is "description" . id_) (children content)
   interface <- findM (is "interface" . id_) (children content)
-  return ModuleDocs
+  return Module
     { mTitle = Text.unpack $ maybe "" innerText mtitle
-    , mDescription = mdescription
-    , mDeclarations = mapMaybe parseDeclaration $ children interface
+    , mDescription = Html <$> mdescription
+    , mDeclarations = mapMaybe (parseDeclaration . Html) $ children interface
     , mUrl = url
     }
 
-parseDeclaration :: Xml.Element -> Maybe DeclarationDocs
-parseDeclaration el = do
+parseDeclaration :: Html -> Maybe Declaration
+parseDeclaration (Html el) = do
   decl <- findM (is "top" . class_) [el]
   ([sig], content) <- return
     $ partition (is "src" . class_) $ children decl
 
-  return DeclarationDocs
+  return Declaration
     { dAnchors = Set.fromList $ anchors el
-    , dSignature = asTag "div" sig
-    , dContent = content
+    , dSignature = Html $ asTag "div" sig
+    , dContent = Html <$> content
     }
   where
     asTag t e = e
@@ -126,9 +148,8 @@ anchors el = f $ foldMap anchors (children el)
       class_ e == "def" &&
       (Text.isPrefixOf "t:" (id_ e) || Text.isPrefixOf "v:" (id_ e))
 
-sourceLinks :: ModuleLink -> Html -> [(Anchor, SourceLink)]
-sourceLinks (ModuleLink modLink _) (Html html) = do
-  let root = Xml.documentRoot (Html.parseLBS html)
+sourceLinks :: ModuleLink -> HtmlPage -> [(Anchor, SourceLink)]
+sourceLinks (ModuleLink modLink _) (HtmlPage root) = do
   body        <- filter (is "body" . tag) $ children root
   content     <- filter (is "content" . id_) $ children body
   interface   <- filter (is "interface" . id_) $ children content
@@ -154,9 +175,18 @@ sourceLinks (ModuleLink modLink _) (Html html) = do
 -- Displaying Haddock's Html
 -- ================================
 
+class IsHtml a where
+  toElement :: a -> Xml.Element
+
+instance IsHtml Html where
+  toElement (Html e) = e
+
+instance IsHtml HtmlPage where
+  toElement (HtmlPage p) = p
+
 -- | Render Haddock's Html
-prettyHtml :: Xml.Element -> P.Doc
-prettyHtml = fromMaybe mempty . unXMLElement
+prettyHtml :: IsHtml html => html -> P.Doc
+prettyHtml = fromMaybe mempty . unXMLElement . toElement
   where
     unXMLElement e = style e . fold =<< unXMLChildren e
     unXMLChildren e =
@@ -239,10 +269,8 @@ prettyHtml = fromMaybe mempty . unXMLElement
 
 -- | Convert an html page into a src file and inform of line
 -- number of SourceLink
-fileInfo :: SourceLink -> Html -> FileInfo
-fileInfo (SourceLink _ anchor) (Html doc) = head $ do
-  let page = Html.parseLBS doc
-      root = Xml.documentRoot page
+fileInfo :: SourceLink -> HtmlPage -> FileInfo
+fileInfo (SourceLink _ anchor) (HtmlPage root) = head $ do
   head_ <- filter (is "head" . tag) $ children root
   title <- filter (is "title" . tag) $ children head_
   let filename = Text.unpack $ Text.replace "/" "." $ innerText title <> ".hs"

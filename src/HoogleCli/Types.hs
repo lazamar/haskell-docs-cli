@@ -1,14 +1,10 @@
 module HoogleCli.Types where
 
 import Data.Text (Text)
-import Data.Set (Set)
 import Data.List.NonEmpty (NonEmpty)
 
-import qualified Text.XML as XML
 import qualified Data.Text as Text
 import qualified Hoogle
-
--- | Types to handle Haddock HTML pages
 
 type Url = String
 
@@ -28,23 +24,9 @@ takeAnchor url = case drop 1 $ dropWhile (/= '#') url of
 
 type TargetGroup = NonEmpty Hoogle.Target
 
--- | An exported declaration
-data DeclarationDocs = DeclarationDocs
-  { dAnchors :: Set Anchor
-  , dSignature :: XML.Element
-  , dContent :: [XML.Element]
-  }
-
 -- | Link to an item in a module page
 data ModuleLink = ModuleLink Url (Maybe Anchor)
   deriving (Show)
-
-data ModuleDocs = ModuleDocs
-  { mTitle :: String
-  , mDescription :: Maybe XML.Element
-  , mDeclarations :: [DeclarationDocs]
-  , mUrl :: Url
-  }
 
 -- | Link to an item in a src page
 data SourceLink = SourceLink Url Anchor
