@@ -6,6 +6,7 @@ import Data.Set (Set)
 import Data.List.NonEmpty (NonEmpty)
 
 import qualified Text.XML as XML
+import qualified Data.Text as Text
 import qualified Hoogle
 
 -- | Types to handle Haddock HTML pages
@@ -17,6 +18,14 @@ type Url = String
 --    https://hackage.haskell.org/package/hoogle-5.0.18.1/docs/Hoogle.html#t:Target
 --                                                                         ^^^^^^^^
 type Anchor = Text
+
+dropAnchor :: Url -> Url
+dropAnchor = takeWhile (/= '#')
+
+takeAnchor :: MonadFail m => Url -> m Anchor
+takeAnchor url = case drop 1 $ dropWhile (/= '#') url of
+  [] -> fail "no anchor"
+  xs -> return $ Text.pack xs
 
 type TargetGroup = NonEmpty Hoogle.Target
 
