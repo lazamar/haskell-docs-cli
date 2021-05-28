@@ -1,6 +1,5 @@
 module HoogleCli.Types where
 
-import Data.ByteString.Lazy (ByteString)
 import Data.Text (Text)
 import Data.Set (Set)
 import Data.List.NonEmpty (NonEmpty)
@@ -56,8 +55,6 @@ type FileName = String
 type FileContent = Text
 
 newtype RelativeUrl = RelativeUrl Text
-
-newtype HTML = HTML ByteString
 
 data FileInfo = FileInfo
   { fName :: FileName

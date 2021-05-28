@@ -1,7 +1,9 @@
 {-# LANGUAGE LambdaCase #-}
 module HoogleCli.Haddock
-  ( parseModuleDocs
-  , prettyHTML
+  ( Html
+  , parseHtml
+  , parseModuleDocs
+  , prettyHtml
   , numbered
   , parseHoogleHtml
   , sourceLinks
@@ -20,30 +22,36 @@ import Data.Maybe (fromMaybe, mapMaybe)
 import Data.List hiding (groupBy)
 import Data.Char (isSpace)
 import Data.Text (Text)
+import Data.ByteString.Lazy (ByteString)
 
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.Text.Encoding as Text
 
-import qualified Text.HTML.DOM as HTML
-import qualified Text.XML as XML
+import qualified Text.HTML.DOM as Html
+import qualified Text.XML as Xml
 import qualified Data.Text as Text
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Text.PrettyPrint.ANSI.Leijen as P
 import qualified Text.PrettyPrint.ANSI.Leijen.Internal as P
 
-parseHoogleHtml :: String -> XML.Element
+newtype Html = Html ByteString
+
+parseHtml :: ByteString -> Html
+parseHtml = Html
+
+parseHoogleHtml :: String -> Xml.Element
 parseHoogleHtml
-  = XML.documentRoot
-  . HTML.parseLBS
+  = Xml.documentRoot
+  . Html.parseLBS
   . LB.fromStrict
   . Text.encodeUtf8
   . Text.pack
   . (\v -> "<div>" <> v <> "</div>")
 
-parseModuleDocs :: Url -> HTML -> ModuleDocs
-parseModuleDocs url (HTML src) = head $ do
-  let root = XML.documentRoot (HTML.parseLBS src)
+parseModuleDocs :: Url -> Html -> ModuleDocs
+parseModuleDocs url (Html src) = head $ do
+  let root = Xml.documentRoot (Html.parseLBS src)
   body    <- findM (is "body" . tag) $ children root
   content <- findM (is "content" . id_) $ children body
   let mtitle = do
@@ -58,7 +66,7 @@ parseModuleDocs url (HTML src) = head $ do
     , mUrl = url
     }
 
-parseDeclaration :: XML.Element -> Maybe DeclarationDocs
+parseDeclaration :: Xml.Element -> Maybe DeclarationDocs
 parseDeclaration el = do
   decl <- findM (is "top" . class_) [el]
   ([sig], content) <- return
@@ -71,8 +79,8 @@ parseDeclaration el = do
     }
   where
     asTag t e = e
-      { XML.elementName =
-          (XML.elementName e) { XML.nameLocalName = t }
+      { Xml.elementName =
+          (Xml.elementName e) { Xml.nameLocalName = t }
       }
 
 findM :: (MonadFail m, Foldable t) => (a -> Bool) -> t a -> m a
@@ -83,33 +91,33 @@ findM f x = do
 is :: Eq a => a -> a -> Bool
 is = (==)
 
-children :: XML.Element -> [XML.Element]
+children :: Xml.Element -> [Xml.Element]
 children element =
-  [ n | XML.NodeElement n <- XML.elementNodes element ]
+  [ n | Xml.NodeElement n <- Xml.elementNodes element ]
 
-tag :: XML.Element -> Text
-tag = XML.nameLocalName . XML.elementName
+tag :: Xml.Element -> Text
+tag = Xml.nameLocalName . Xml.elementName
 
-id_ :: XML.Element -> Text
+id_ :: Xml.Element -> Text
 id_ = attr "id"
 
-class_ :: XML.Element -> Text
+class_ :: Xml.Element -> Text
 class_ = attr "class"
 
-attr :: Text -> XML.Element -> Text
+attr :: Text -> Xml.Element -> Text
 attr name =
   fromMaybe ""
-  . Map.lookup (XML.Name name Nothing Nothing)
-  . XML.elementAttributes
+  . Map.lookup (Xml.Name name Nothing Nothing)
+  . Xml.elementAttributes
 
-innerText :: XML.Element -> Text
-innerText el = flip foldMap (XML.elementNodes el) $ \case
-  XML.NodeElement e -> innerText e
-  XML.NodeInstruction _ -> mempty
-  XML.NodeContent txt -> txt
-  XML.NodeComment _ -> mempty
+innerText :: Xml.Element -> Text
+innerText el = flip foldMap (Xml.elementNodes el) $ \case
+  Xml.NodeElement e -> innerText e
+  Xml.NodeInstruction _ -> mempty
+  Xml.NodeContent txt -> txt
+  Xml.NodeComment _ -> mempty
 
-anchors :: XML.Element -> [Anchor]
+anchors :: Xml.Element -> [Anchor]
 anchors el = f $ foldMap anchors (children el)
   where
     f = if isAnchor el then (id_ el :) else id
@@ -118,9 +126,9 @@ anchors el = f $ foldMap anchors (children el)
       class_ e == "def" &&
       (Text.isPrefixOf "t:" (id_ e) || Text.isPrefixOf "v:" (id_ e))
 
-sourceLinks :: ModuleLink -> HTML -> [(Anchor, SourceLink)]
-sourceLinks (ModuleLink modLink _) (HTML html) = do
-  let root = XML.documentRoot (HTML.parseLBS html)
+sourceLinks :: ModuleLink -> Html -> [(Anchor, SourceLink)]
+sourceLinks (ModuleLink modLink _) (Html html) = do
+  let root = Xml.documentRoot (Html.parseLBS html)
   body        <- filter (is "body" . tag) $ children root
   content     <- filter (is "content" . id_) $ children body
   interface   <- filter (is "interface" . id_) $ children content
@@ -143,27 +151,27 @@ sourceLinks (ModuleLink modLink _) (HTML html) = do
 
 
 -- ================================
--- Displaying Haddock's HTML
+-- Displaying Haddock's Html
 -- ================================
 
--- | Render Haddock's HTML
-prettyHTML :: XML.Element -> P.Doc
-prettyHTML = fromMaybe mempty . unXMLElement
+-- | Render Haddock's Html
+prettyHtml :: Xml.Element -> P.Doc
+prettyHtml = fromMaybe mempty . unXMLElement
   where
     unXMLElement e = style e . fold =<< unXMLChildren e
     unXMLChildren e =
-      case mapMaybe unXMLNode (XML.elementNodes e) of
+      case mapMaybe unXMLNode (Xml.elementNodes e) of
         [] -> Nothing
         xs -> Just xs
     unXMLNode = \case
-      XML.NodeInstruction _ -> Nothing
-      XML.NodeContent txt | Text.null txt -> Nothing
-      XML.NodeContent txt -> Just
+      Xml.NodeInstruction _ -> Nothing
+      Xml.NodeContent txt | Text.null txt -> Nothing
+      Xml.NodeContent txt -> Just
         $ docwords id
         $ unescapeHTML
         $ Text.unpack txt
-      XML.NodeComment _ -> Nothing
-      XML.NodeElement e -> unXMLElement e
+      Xml.NodeComment _ -> Nothing
+      Xml.NodeElement e -> unXMLElement e
 
     docwords f [] = P.fillCat (f [])
     docwords f (x:xs)
@@ -231,10 +239,10 @@ prettyHTML = fromMaybe mempty . unXMLElement
 
 -- | Convert an html page into a src file and inform of line
 -- number of SourceLink
-fileInfo :: SourceLink -> HTML -> FileInfo
-fileInfo (SourceLink _ anchor) (HTML doc) = head $ do
-  let page = HTML.parseLBS doc
-      root = XML.documentRoot page
+fileInfo :: SourceLink -> Html -> FileInfo
+fileInfo (SourceLink _ anchor) (Html doc) = head $ do
+  let page = Html.parseLBS doc
+      root = Xml.documentRoot page
   head_ <- filter (is "head" . tag) $ children root
   title <- filter (is "title" . tag) $ children head_
   let filename = Text.unpack $ Text.replace "/" "." $ innerText title <> ".hs"
@@ -242,24 +250,24 @@ fileInfo (SourceLink _ anchor) (HTML doc) = head $ do
   return $ FileInfo filename (anchorLine anchor body) (innerText body)
 
 -- | File line where the tag is
-anchorLine :: Anchor -> XML.Element -> Maybe Int
+anchorLine :: Anchor -> Xml.Element -> Maybe Int
 anchorLine anchor
   = either Just (const Nothing)
   . anchorNodes 0
-  . XML.elementNodes
+  . Xml.elementNodes
   where
-    anchorNodes :: Int -> [XML.Node] -> Either Int Int
+    anchorNodes :: Int -> [Xml.Node] -> Either Int Int
     anchorNodes n = foldM anchorNode n
 
-    anchorNode :: Int -> XML.Node -> Either Int Int -- anchor line or total lines
+    anchorNode :: Int -> Xml.Node -> Either Int Int -- anchor line or total lines
     anchorNode n = \case
-      XML.NodeInstruction _ -> Right n
-      XML.NodeContent txt -> Right $ n + Text.count "\n" txt
-      XML.NodeComment _ -> Right n
-      XML.NodeElement e ->
+      Xml.NodeInstruction _ -> Right n
+      Xml.NodeContent txt -> Right $ n + Text.count "\n" txt
+      Xml.NodeComment _ -> Right n
+      Xml.NodeElement e ->
         if attr "name" e == anchor
           then Left n
-          else anchorNodes n (XML.elementNodes e)
+          else anchorNodes n (Xml.elementNodes e)
 
 
 -- =================================

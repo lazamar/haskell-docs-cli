@@ -193,7 +193,7 @@ evaluate = \case
     html <- fetch' url
     let modl = parseModuleDocs url html
         desc = case manchor of
-          Nothing -> prettyHTML <$> mDescription modl
+          Nothing -> prettyHtml <$> mDescription modl
           Just an -> prettyDecl <$> lookupDecl an modl
     viewInTerminal $ fromMaybe mempty desc
   ViewModuleInterface ix ->
@@ -257,7 +257,7 @@ viewModuleInterface
   = viewInTerminal
   . P.vsep
   . numbered
-  . map prettyHTML
+  . map prettyHtml
   . map dSignature
   . mDeclarations
 
@@ -332,11 +332,11 @@ instance HasUrl ModuleLink where getUrl (ModuleLink url _) = url
 instance HasUrl SourceLink where getUrl (SourceLink url _) = url
 instance HasUrl Url        where getUrl url = url
 
-fetch' :: HasUrl a => a -> M HTML
+fetch' :: HasUrl a => a -> M Html
 fetch' x = do
   req <- liftIO $ Http.parseRequest $ getUrl x
   src <- fetch req
-  return (HTML src)
+  return (parseHtml src)
 
 fetch :: Http.Request -> M LB.ByteString
 fetch req = do
@@ -358,7 +358,7 @@ fetch req = do
 -- ================================
 
 viewItem :: Hoogle.Target -> P.Doc
-viewItem = prettyHTML . parseHoogleHtml . Hoogle.targetItem
+viewItem = prettyHtml . parseHoogleHtml . Hoogle.targetItem
 
 viewCompact :: TargetGroup -> P.Doc
 viewCompact tgroup = P.vsep
@@ -382,7 +382,7 @@ viewPackageAndModule target = do
 prettyModule :: ModuleDocs -> P.Doc
 prettyModule (ModuleDocs name minfo decls _) =
   P.vsep $ [title]
-    ++ [ prettyHTML info | Just info <- [minfo] ]
+    ++ [ prettyHtml info | Just info <- [minfo] ]
     ++ [ prettyDecl decl | decl <- decls ]
   where
     title = P.vsep
@@ -393,7 +393,7 @@ prettyModule (ModuleDocs name minfo decls _) =
 
 prettyDecl :: DeclarationDocs -> P.Doc
 prettyDecl DeclarationDocs{..} =
-  P.vsep $ map prettyHTML $ dSignature:dContent
+  P.vsep $ map prettyHtml $ dSignature:dContent
 
 lookupDecl :: Anchor -> ModuleDocs -> Maybe DeclarationDocs
 lookupDecl anchor (ModuleDocs _ _ decls _) =
@@ -411,7 +411,7 @@ viewFull tgroup = P.vsep
     content = P.vsep $
       [ viewItem representative
       , viewPackageInfoList tgroup
-      , prettyHTML $ parseHoogleHtml $ Hoogle.targetDocs representative
+      , prettyHtml $ parseHoogleHtml $ Hoogle.targetDocs representative
       ] ++ reverse (P.cyan . P.text . Hoogle.targetURL <$> toList tgroup)
 
 -- ================================
