@@ -1,5 +1,11 @@
 {-# LANGUAGE LambdaCase #-}
-module Lib where
+module HoogleCli
+  ( interactive
+  , evaluate
+  , ShellState(..)
+  , Context(..)
+  , Cmd(..)
+  ) where
 
 import Control.Applicative ((<|>))
 import Control.Monad.Trans.Class (lift)
@@ -10,23 +16,19 @@ import Data.Foldable (toList, fold)
 import Data.Bifunctor (bimap)
 import Data.ByteString.Lazy (ByteString)
 import Data.List.Extra (unescapeHTML)
-import Data.List.NonEmpty (NonEmpty)
 import Control.Monad (foldM)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, mapMaybe, listToMaybe)
 import Data.List hiding (groupBy)
 import Data.Char (isSpace)
-import Data.Set (Set)
 import Data.Map.Strict (Map)
 import Data.Text (Text)
 import System.Environment (getEnv)
 import System.IO (stdout, Handle)
-import System.IO.Temp
-  ( withSystemTempFile
-  , withTempDirectory
-  , getCanonicalTemporaryDirectory)
+import System.IO.Temp (withSystemTempFile)
 
+import HoogleCli.Types
 
 import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Monad.Trans.State.Lazy as State
@@ -40,8 +42,6 @@ import qualified Data.Text.Encoding as Text
 import qualified Data.Text.IO as Text (hPutStr)
 import qualified Hoogle
 import qualified Network.HTTP.Client as Http
-import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
-import qualified Options.Applicative as O
 import qualified System.Console.Haskeline as CLI
 import qualified System.Process as Process
 import qualified Text.HTML.DOM as HTML
@@ -50,39 +50,34 @@ import qualified Text.PrettyPrint.ANSI.Leijen.Internal as P
 import qualified Text.XML as XML
 import qualified System.Console.Terminal.Size as Terminal
 
-newtype Options = Options
-  { count :: Int
-  }
-
-type TargetGroup = NonEmpty Hoogle.Target
 
 data ShellState = ShellState
   { sContext :: Context
   , sManager :: Http.Manager
   , sCache :: Map Url (MVar ByteString)
-  , sOptions :: Options
   }
 
--- | Commands with indexes reference the context
+-- | Context referenced by commands that contain an index
 data Context
-  -- | results of a search
-  = ContextEmpty
-  | ContextSearch String [TargetGroup]
-  | ContextModule ModuleDocs
+  = ContextEmpty                        -- ^ Nothing selected
+  | ContextSearch String [TargetGroup]  -- ^ within search results
+  | ContextModule ModuleDocs            -- ^ looking at module docs
+
+type Index = Int
+
+-- | Commands we accept
+data Cmd
+  = Search String
+  | ViewContext                  -- ^ show data from current context
+  | ViewDocs Index               -- ^ docs provided in the hoogle response
+  | ViewExtendedDocs Index       -- ^ declaration's docs available in the haddock page
+  | ViewModuleDocs (Maybe Index) -- ^ full haddock for module
+  | ViewModuleInterface Index    -- ^ all function signatures
+  | ViewSource Index             -- ^ source for target
+  | ViewPackageModules Index     -- ^ list modules from a package
+  | Quit
 
 type M a = StateT ShellState (CLI.InputT IO) a
-
-cliOptions :: O.ParserInfo Options
-cliOptions = O.info parser $ O.header " \
-  \Hoogle CLI is a command line interface to Hoogle.\
-  \Hoogle is a Haskell API search engine, which allows you to search the Haskell libraries on Stackage by either function name, or by approximate type signature."
-  where
-    parser = Options
-      <$> O.option O.auto
-          (O.long "count"
-          <> O.metavar "INT"
-          <> O.help "String to search for"
-          <> O.value 20)
 
 runSearch :: String -> M [Hoogle.Target]
 runSearch term = do
@@ -124,57 +119,15 @@ groupBy f vs = go mempty vs
         Nothing -> (out, m)
         Just v -> (v:out, Map.delete key m)
 
-splitOn :: Eq a => a -> [a] -> [[a]]
-splitOn _ [] = []
-splitOn x xs = y : splitOn x (drop 1 ys)
-  where
-    (y, ys) = break (== x) xs
-
-someFunc' :: IO ()
-someFunc' = do
-  options <- O.execParser cliOptions
-  manager <- Http.newManager Http.tlsManagerSettings
-  CLI.runInputT CLI.defaultSettings
-    $ State.evalStateT
-      (do
-        runCommand (Search "Data.Set")
-        runCommand (ViewDocs 1)
-      )
-      ShellState
-        { sContext = ContextEmpty
-        , sManager = manager
-        , sOptions = options
-        , sCache = mempty
-        }
-
-someFunc :: IO ()
-someFunc = do
-  options <- O.execParser cliOptions
-  manager <- Http.newManager Http.tlsManagerSettings
-  CLI.runInputT CLI.defaultSettings
-    $ State.evalStateT loop ShellState
-        { sContext = ContextEmpty
-        , sManager = manager
-        , sOptions = options
-        , sCache = mempty
-        }
-
-data Cmd
-  = ViewContext
-  | Search String
-  | ViewDocs Int
-  -- ^ docs provided in the hoogle response
-  | ViewExtendedDocs Int
-  -- ^ declaration's docs available in the haddock page
-  | ViewModuleDocs (Maybe Int)
-  -- ^ full haddock for module
-  | ViewModuleInterface Int
-  -- ^ all function signatures
-  | ViewSource Int
-  | Quit
-
 commands :: [String]
-commands = [ "src", "quit", "mdoc", "edoc", "interface" ]
+commands =
+  [ "src"
+  , "quit"
+  , "module-doc"
+  , "edoc"
+  , "interface"
+  , "package"
+  ]
 
 fillPrefix :: String -> Maybe String
 fillPrefix v = find (v `isPrefixOf`) commands
@@ -190,27 +143,28 @@ parseCommand str = case str of
             "Command :" <> cmd <> "expects an integer argument"
     case cmd of
         "src" -> intCmd ViewSource
-        "mdoc"
+        "module-doc"
           | null args -> Right $ ViewModuleDocs Nothing
           | otherwise -> intCmd (ViewModuleDocs . Just)
         "edoc" -> intCmd ViewExtendedDocs
         "interface" -> intCmd ViewModuleInterface
+        "package" -> intCmd ViewPackageModules
         "quit" -> Right Quit
         _ -> error $ "Unknown command: " <> cmd
   x | Just n <- readMaybe x -> Right (ViewDocs n)
   [] -> Right ViewContext
   _ -> Right $ Search str
 
-loop :: M ()
-loop = do
+interactive :: M ()
+interactive = do
   minput <- lift $ CLI.getInputLine "hoogle> "
   case parseCommand $ fromMaybe "" minput of
-    Left err -> liftIO (putStrLn err) >> loop
+    Left err -> liftIO (putStrLn err) >> interactive
     Right Quit -> return ()
-    Right cmd -> runCommand cmd >> loop
+    Right cmd -> evaluate cmd >> interactive
 
-runCommand :: Cmd -> M ()
-runCommand = \case
+evaluate :: Cmd -> M ()
+evaluate = \case
   Quit -> error "impossible"
   ViewContext -> do
     context <- State.gets sContext
@@ -242,7 +196,7 @@ runCommand = \case
     let target = NonEmpty.head tgroup
     let ModuleLink url manchor = moduleLink target
     html <- fetch' url
-    let modl = parseModuleDocs html
+    let modl = parseModuleDocs url html
         desc = case manchor of
           Nothing -> prettyHTML <$> mDescription modl
           Just an -> prettyDecl <$> lookupDecl an modl
@@ -250,8 +204,9 @@ runCommand = \case
   ViewModuleInterface ix ->
     getTargetGroup ix $ \tgroup -> do
     target <- promptSelectOne tgroup
-    html <- fetch' (moduleLink target)
-    let modl = parseModuleDocs html
+    let ModuleLink url _ = moduleLink target
+    html <- fetch' url
+    let modl = parseModuleDocs url html
     State.modify' $ \s -> s
         { sContext = ContextModule modl
         }
@@ -261,12 +216,20 @@ runCommand = \case
   ViewModuleDocs (Just ix) ->
     getTargetGroup ix $ \tgroup -> do
     target <- promptSelectOne tgroup
-    html <- fetch' (moduleLink target)
-    viewModuleDocs (parseModuleDocs html)
+    let ModuleLink url _ = moduleLink target
+    html <- fetch' url
+    viewModuleDocs (parseModuleDocs url html)
   ViewSource ix ->
     getTargetGroup ix $ \tgroup -> do
     target <- promptSelectOne tgroup
     editSource target
+  ViewPackageModules ix -> do
+    context <- State.gets sContext
+    case context of
+      ContextEmpty -> liftIO $ putStrLn "no package to show"
+      ContextSearch _ _ -> getTargetGroup ix undefined
+      ContextModule _ -> undefined
+
 
 withSearchContext :: ([TargetGroup] -> M ()) -> M ()
 withSearchContext f = do
@@ -368,22 +331,8 @@ getEditor = getEnv "VISUAL" <|> getEnv "EDITOR" <|> defaultEditor
   where
     defaultEditor = error "no editor selected"
 
-data ModuleDocs = ModuleDocs
-  { mTitle :: String
-  , mDescription :: Maybe XML.Element
-  , mDeclarations :: [DeclarationDocs]
-  }
-
-data DeclarationDocs = DeclarationDocs
-  { dAnchors :: Set Anchor
-  , dSignature :: XML.Element
-  , dContent :: [XML.Element]
-  }
-
-type ModuleItem = XML.Element
-
-parseModuleDocs :: HTML -> ModuleDocs
-parseModuleDocs (HTML src) = head $ do
+parseModuleDocs :: Url -> HTML -> ModuleDocs
+parseModuleDocs url (HTML src) = head $ do
   let root = XML.documentRoot (HTML.parseLBS src)
   body    <- findM (is "body" . tag) $ children root
   content <- findM (is "content" . id_) $ children body
@@ -396,6 +345,7 @@ parseModuleDocs (HTML src) = head $ do
     { mTitle = Text.unpack $ maybe "" innerText mtitle
     , mDescription = mdescription
     , mDeclarations = mapMaybe parseDeclaration $ children interface
+    , mUrl = url
     }
 
 parseDeclaration :: XML.Element -> Maybe DeclarationDocs
@@ -414,15 +364,6 @@ parseDeclaration el = do
       { XML.elementName =
           (XML.elementName e) { XML.nameLocalName = t }
       }
-
-withTempPath :: String -> (String -> IO a) -> IO a
-withTempPath path f = do
-  root <- getCanonicalTemporaryDirectory
-  go root $ filter (not . null) $ splitOn '/' path
-  where
-    go parent [] = f parent
-    go parent (x:xs) =
-      withTempDirectory parent x $ \p -> go p xs
 
 class HasUrl a where
   getUrl :: a -> Url
@@ -478,7 +419,7 @@ viewPackageAndModule target = do
   return $ pkg P.<+> mol
 
 prettyModule :: ModuleDocs -> P.Doc
-prettyModule (ModuleDocs name minfo decls) =
+prettyModule (ModuleDocs name minfo decls _) =
   P.vsep $ [title]
     ++ [ prettyHTML info | Just info <- [minfo] ]
     ++ [ prettyDecl decl | decl <- decls ]
@@ -494,7 +435,7 @@ prettyDecl DeclarationDocs{..} =
   P.vsep $ map prettyHTML $ dSignature:dContent
 
 lookupDecl :: Anchor -> ModuleDocs -> Maybe DeclarationDocs
-lookupDecl anchor (ModuleDocs _ _ decls) =
+lookupDecl anchor (ModuleDocs _ _ decls _) =
   find (Set.member anchor . dAnchors) decls
 
 viewFull :: TargetGroup -> P.Doc
@@ -521,16 +462,6 @@ wrapHTML
   . Text.pack
   . (\v -> "<div>" <> v <> "</div>")
 
-unHTML :: String -> String
-unHTML = unescapeHTML . removeTags False
-  where
-    -- remove html tags
-    removeTags _ [] = []
-    removeTags False ('<':xs) = removeTags True xs
-    removeTags True  ('>':xs) = removeTags False xs
-    removeTags False (x:xs)   = x:removeTags False xs
-    removeTags True  (_:xs)   = removeTags True xs
-
 numbered :: [P.Doc] -> [P.Doc]
 numbered = zipWith f [1..]
   where
@@ -543,31 +474,6 @@ bullet doc = P.fill 2 (P.char '-') <> P.align doc
 -- Haddock handling
 -- ================================
 
-type Url = String
-
--- | Link to an item in a module page
-data ModuleLink = ModuleLink Url (Maybe Anchor)
-  deriving (Show)
-
--- | Link to an item in a src page
-data SourceLink = SourceLink Url Anchor
-  deriving (Show)
-
-type FileName = String
-
-type FileContent = Text
-
-type Anchor = Text
-
-newtype RelativeUrl = RelativeUrl Text
-
-newtype HTML = HTML ByteString
-
-data FileInfo = FileInfo
-  { fName :: FileName
-  , fLine :: Maybe Int
-  , fContent :: FileContent
-  }
 
 -- | Render Haddock's HTML
 prettyHTML :: XML.Element -> P.Doc
@@ -780,8 +686,3 @@ innerText el = flip foldMap (XML.elementNodes el) $ \case
   XML.NodeInstruction _ -> mempty
   XML.NodeContent txt -> txt
   XML.NodeComment _ -> mempty
-
-foldElement :: Monoid m => (XML.Element -> m) -> XML.Element -> m
-foldElement f el = foldr (mappend . foldElement f) (f el) (children el)
-
-
