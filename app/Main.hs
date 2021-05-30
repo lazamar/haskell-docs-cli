@@ -37,7 +37,7 @@ main' = do
     $ State.evalStateT
       (do
         evaluate (Search "Data.Set")
-        evaluate (ViewDocs 1)
+        evaluate (Select 1)
       )
       ShellState
         { sContext = ContextEmpty

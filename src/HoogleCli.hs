@@ -66,14 +66,14 @@ type Index = Int
 
 -- | Commands we accept
 data Cmd
-  = Search String
-  | ViewContext                  -- ^ show data from current context
-  | ViewDocs Index               -- ^ docs provided in the hoogle response
-  | ViewExtendedDocs Index       -- ^ declaration's docs available in the haddock page
-  | ViewModuleDocs (Maybe Index) -- ^ full haddock for module
-  | ViewModuleInterface Index    -- ^ all function signatures
-  | ViewSource Index             -- ^ source for target
-  | ViewPackageModules Index     -- ^ list modules from a package
+  = ViewContext                      -- ^ show data from current context
+  | Select Index                     -- ^ view item from context
+  | Search String                    -- ^ Hoogle search
+  | ViewSource Index                 -- ^ source for target
+  | ViewExtendedDocs Index           -- ^ declaration's docs available in the haddock page
+  | ViewModuleDocs (Maybe Index)     -- ^ full haddock for module
+  | ViewModuleInterface Index        -- ^ all function signatures
+  | ViewPackageModules (Maybe Index) -- ^ list modules from a package
   | Quit
 
 type M a = StateT ShellState (CLI.InputT IO) a
@@ -140,22 +140,29 @@ parseCommand str = case str of
           | Just n <- readMaybe args = Right (f n)
           | otherwise = Left $
             "Command :" <> cmd <> "expects an integer argument"
+        mIntCmd f
+          | null args = Right (f Nothing)
+          | otherwise = intCmd (f . Just)
     case cmd of
         "src" -> intCmd ViewSource
-        "module-doc"
-          | null args -> Right $ ViewModuleDocs Nothing
-          | otherwise -> intCmd (ViewModuleDocs . Just)
+        "module-doc" -> mIntCmd ViewModuleDocs
         "edoc" -> intCmd ViewExtendedDocs
         "interface" -> intCmd ViewModuleInterface
-        "package" -> intCmd ViewPackageModules
+        "package" -> mIntCmd ViewPackageModules
         "quit" -> Right Quit
         _ -> error $ "Unknown command: " <> cmd
-  x | Just n <- readMaybe x -> Right (ViewDocs n)
+  x | Just n <- readMaybe x -> Right (Select n)
   [] -> Right ViewContext
   _ -> Right $ Search str
 
 interactive :: M ()
 interactive = do
+  context <- State.gets sContext
+  case context of
+    ContextEmpty      -> return ()
+    ContextSearch t _ -> liftIO $ putStrLn $ "search: " <> t
+    ContextModule m   -> liftIO $ putStrLn $ "module: " <> mTitle m
+    ContextPackage p  -> liftIO $ putStrLn $ "package: " <> pTitle p
   minput <- lift $ CLI.getInputLine "hoogle> "
   case parseCommand $ fromMaybe "" minput of
     Left err -> liftIO (putStrLn err) >> interactive
@@ -168,24 +175,15 @@ evaluate = \case
   ViewContext -> do
     context <- State.gets sContext
     case context of
-      ContextEmpty ->
-        liftIO $ putStrLn "no context"
-      ContextSearch term results -> do
-        viewSearchResults results
-        liftIO $ putStrLn $ "search: " <> term
-      ContextModule mdocs -> do
-        viewModuleInterface mdocs
-        liftIO $ putStrLn $ "module: " <> mTitle mdocs
-      ContextPackage package -> do
-        viewPackageModules package
-        liftIO $ putStrLn $ "package: " <> pTitle package
+      ContextEmpty            -> return ()
+      ContextSearch _ results -> viewSearchResults results
+      ContextModule mdocs     -> viewModuleInterface mdocs
+      ContextPackage package  -> viewPackageModules package
   Search str -> do
     res <- toGroups <$> runSearch str
     viewSearchResults res
-    State.modify' $ \s -> s
-        { sContext = ContextSearch str res
-        }
-  ViewDocs ix -> do
+    State.modify' $ \s -> s{ sContext = ContextSearch str res }
+  Select ix -> do
     context <- State.gets sContext
     case context of
       ContextEmpty -> fail "no context"
@@ -195,7 +193,6 @@ evaluate = \case
         viewInTerminal $ prettyDecl decl
       ContextPackage (Package _ modules purl) -> do
         url <- packageModuleUrl purl <$> elemAt ix modules
-        liftIO $ print url
         html <- fetch' url
         let modl = parseModuleDocs url html
         State.modify' $ \s -> s
@@ -217,9 +214,7 @@ evaluate = \case
     let url = moduleLink target
     html <- fetch' url
     let modl = parseModuleDocs url html
-    State.modify' $ \s -> s
-        { sContext = ContextModule modl
-        }
+    State.modify' $ \s -> s{ sContext = ContextModule modl }
     viewModuleInterface modl
   ViewModuleDocs Nothing ->
     withModuleContext viewModuleDocs
@@ -230,11 +225,13 @@ evaluate = \case
     viewModuleDocs (parseModuleDocs url html)
   ViewSource ix ->
     getTarget ix editSource
-  ViewPackageModules ix -> do
+  ViewPackageModules mix -> do
     context <- State.gets sContext
     package <- case context of
       ContextEmpty -> fail "no package to show"
-      ContextSearch _ _ ->
+      ContextSearch _ _
+        | Nothing <- mix -> fail "no option selected"
+        | Just ix <- mix ->
         getTarget ix $ \target -> do
         let url = packageUrl $ moduleLink target
         html <- fetch' url
@@ -250,8 +247,7 @@ evaluate = \case
       ContextPackage package -> do
         viewPackageModules package
         return package
-    State.modify' $ \s -> s
-        { sContext = ContextPackage package }
+    State.modify' $ \s -> s{ sContext = ContextPackage package }
 
 -- | Get an element from a one-indexed index
 elemAt :: Int -> [a] -> M a
@@ -348,7 +344,7 @@ editSource :: Hoogle.Target -> M ()
 editSource target = do
   mlink <- sourceLink target
   case mlink of
-    Nothing -> liftIO $ putStrLn "no source for file"
+    Nothing -> liftIO $ putStrLn "no source available"
     Just link -> do
       html <- fetch' link
       view (fileInfo link html)
