@@ -1,11 +1,15 @@
 {-# LANGUAGE LambdaCase #-}
+
+-- | Functions to parse and display Haddock HTML
 module HoogleCli.Haddock
   ( Html
   , HtmlPage
   , Module(..)
   , Declaration(..)
+  , Package(..)
   , parseHtmlDocument
   , parseModuleDocs
+  , parsePackageDocs
   , prettyHtml
   , numbered
   , parseHoogleHtml
@@ -13,8 +17,6 @@ module HoogleCli.Haddock
   , fileInfo
   )
   where
-
--- | Functions to parse and display Haddock HTML
 
 import HoogleCli.Types
 
@@ -57,6 +59,12 @@ data Module = Module
   , mDescription :: Maybe Html
   , mDeclarations :: [Declaration]
   , mUrl :: Url
+  }
+
+data Package = Package
+  { pTitle :: String
+  , pModules :: [String]
+  , pUrl :: PackageUrl
   }
 
 parseHtmlDocument :: ByteString -> HtmlPage
@@ -104,6 +112,22 @@ parseDeclaration (Html el) = do
       { Xml.elementName =
           (Xml.elementName e) { Xml.nameLocalName = t }
       }
+
+parsePackageDocs :: HtmlPage -> Package
+parsePackageDocs (HtmlPage root) = head $ do
+  findM (is "body" . tag) (children root)
+  findM (is "content" . id_) (children root)
+  findM (is "modules" . id_) (children root)
+  findM (is "module-list" . id_) (children root)
+  find (is "module" . class_)
+
+data Package = Package
+  { pTitle :: String
+  , pModules :: [String]
+  , pUrl :: PackageUrl
+  }
+
+  undefined
 
 findM :: (MonadFail m, Foldable t) => (a -> Bool) -> t a -> m a
 findM f x = do

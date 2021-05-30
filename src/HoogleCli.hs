@@ -5,10 +5,12 @@ module HoogleCli
   , ShellState(..)
   , Context(..)
   , Cmd(..)
+  , packageUrl
   ) where
 
 import Control.Applicative ((<|>))
 import Control.Monad.Trans.Class (lift)
+import Control.Monad ((<=<))
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Trans.State.Lazy (StateT)
 import Data.Foldable (toList)
@@ -19,6 +21,7 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, mapMaybe, listToMaybe)
 import Data.List hiding (groupBy)
+import Data.List.Extra (breakOn)
 import Data.Char (isSpace)
 import Data.Map.Strict (Map)
 import System.Environment (getEnv)
@@ -181,9 +184,7 @@ evaluate = \case
     context <- State.gets sContext
     case context of
       ContextEmpty -> liftIO $ putStrLn "no context"
-      ContextSearch _ _ ->
-        getTargetGroup ix $ \tgroup -> do
-        viewInTerminal $ viewFull tgroup
+      ContextSearch _ _ -> getTargetGroup ix (viewInTerminal . viewFull)
       ContextModule mdocs ->
         viewInTerminal $ prettyDecl $ mDeclarations mdocs !! (ix - 1)
   ViewExtendedDocs ix ->
@@ -197,8 +198,7 @@ evaluate = \case
           Just an -> prettyDecl <$> lookupDecl an modl
     viewInTerminal $ fromMaybe mempty desc
   ViewModuleInterface ix ->
-    getTargetGroup ix $ \tgroup -> do
-    target <- promptSelectOne tgroup
+    getTarget ix $ \target -> do
     let ModuleLink url _ = moduleLink target
     html <- fetch' url
     let modl = parseModuleDocs url html
@@ -209,20 +209,23 @@ evaluate = \case
   ViewModuleDocs Nothing ->
     withModuleContext viewModuleDocs
   ViewModuleDocs (Just ix) ->
-    getTargetGroup ix $ \tgroup -> do
-    target <- promptSelectOne tgroup
+    getTarget ix $ \target -> do
     let ModuleLink url _ = moduleLink target
     html <- fetch' url
     viewModuleDocs (parseModuleDocs url html)
   ViewSource ix ->
-    getTargetGroup ix $ \tgroup -> do
-    target <- promptSelectOne tgroup
-    editSource target
+    getTarget ix editSource
   ViewPackageModules ix -> do
     context <- State.gets sContext
     case context of
       ContextEmpty -> liftIO $ putStrLn "no package to show"
-      ContextSearch _ _ -> getTargetGroup ix undefined
+      ContextSearch _ _ ->
+        getTarget ix $ \target -> do
+        let url = packageUrl $ moduleLink target
+        html <- fetch' url
+        let package = parsePackageDocs html
+        viewPackageModules package
+
       ContextModule _ -> undefined
 
 
@@ -240,9 +243,11 @@ withModuleContext f = do
     ContextModule mdocs -> f mdocs
     _ -> liftIO $ putStrLn "No module selected"
 
+getTarget :: Int -> (Hoogle.Target -> M ()) -> M ()
+getTarget ix f = getTargetGroup ix (f <=< promptSelectOne)
+
 getTargetGroup :: Int -> (TargetGroup -> M ()) -> M ()
-getTargetGroup ix f =
-  withSearchContext $ f . (!! (ix - 1))
+getTargetGroup ix f = withSearchContext $ f . (!! (ix - 1))
 
 viewSearchResults :: MonadIO m => [TargetGroup] -> m ()
 viewSearchResults
@@ -257,12 +262,14 @@ viewModuleInterface
   = viewInTerminal
   . P.vsep
   . numbered
-  . map prettyHtml
-  . map dSignature
+  . map (prettyHtml . dSignature)
   . mDeclarations
 
 viewModuleDocs :: MonadIO m => Module -> m ()
 viewModuleDocs = viewInEditor . prettyModule
+
+viewPackageModules :: Package -> m ()
+viewPackageModules = undefined
 
 promptSelectOne :: TargetGroup -> M Hoogle.Target
 promptSelectOne tgroup =
@@ -330,6 +337,7 @@ class HasUrl a where
   getUrl :: a -> Url
 instance HasUrl ModuleLink where getUrl (ModuleLink url _) = url
 instance HasUrl SourceLink where getUrl (SourceLink url _) = url
+instance HasUrl PackageUrl where getUrl (PackageUrl url) = url
 instance HasUrl Url        where getUrl url = url
 
 fetch' :: HasUrl a => a -> M HtmlPage
@@ -439,4 +447,7 @@ moduleLink :: Hoogle.Target -> ModuleLink
 moduleLink target = ModuleLink (dropAnchor url) (takeAnchor url)
   where
     url = Hoogle.targetURL target
+
+packageUrl :: ModuleLink -> PackageUrl
+packageUrl (ModuleLink url _) = PackageUrl $ fst $ breakOn "docs" url
 

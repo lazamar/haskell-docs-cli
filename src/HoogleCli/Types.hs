@@ -32,6 +32,10 @@ data ModuleLink = ModuleLink Url (Maybe Anchor)
 data SourceLink = SourceLink Url Anchor
   deriving (Show)
 
+-- | Url to a Haddock package page
+newtype PackageUrl = PackageUrl Url
+  deriving (Show)
+
 type FileName = String
 
 type FileContent = Text
