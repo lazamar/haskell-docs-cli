@@ -60,6 +60,7 @@ data Context
   = ContextEmpty                        -- ^ Nothing selected
   | ContextSearch String [TargetGroup]  -- ^ within search results
   | ContextModule Module                -- ^ looking at module docs
+  | ContextPackage Package              -- ^ looking at a a package's modules
 
 type Index = Int
 
@@ -167,13 +168,17 @@ evaluate = \case
   ViewContext -> do
     context <- State.gets sContext
     case context of
-      ContextEmpty -> liftIO $ putStrLn "no context"
+      ContextEmpty ->
+        liftIO $ putStrLn "no context"
       ContextSearch term results -> do
         viewSearchResults results
         liftIO $ putStrLn $ "search: " <> term
       ContextModule mdocs -> do
         viewModuleInterface mdocs
         liftIO $ putStrLn $ "module: " <> mTitle mdocs
+      ContextPackage package -> do
+        viewPackageModules package
+        liftIO $ putStrLn $ "package: " <> pTitle package
   Search str -> do
     res <- toGroups <$> runSearch str
     viewSearchResults res
@@ -183,23 +188,33 @@ evaluate = \case
   ViewDocs ix -> do
     context <- State.gets sContext
     case context of
-      ContextEmpty -> liftIO $ putStrLn "no context"
+      ContextEmpty -> fail "no context"
       ContextSearch _ _ -> getTargetGroup ix (viewInTerminal . viewFull)
-      ContextModule mdocs ->
-        viewInTerminal $ prettyDecl $ mDeclarations mdocs !! (ix - 1)
+      ContextModule mdocs -> do
+        decl <- elemAt ix (mDeclarations mdocs)
+        viewInTerminal $ prettyDecl decl
+      ContextPackage (Package _ modules purl) -> do
+        url <- packageModuleUrl purl <$> elemAt ix modules
+        liftIO $ print url
+        html <- fetch' url
+        let modl = parseModuleDocs url html
+        State.modify' $ \s -> s
+            { sContext = ContextModule modl
+            }
+        viewModuleInterface modl
   ViewExtendedDocs ix ->
     getTargetGroup ix $ \tgroup -> do
     let target = NonEmpty.head tgroup
-    let ModuleLink url manchor = moduleLink target
-    html <- fetch' url
-    let modl = parseModuleDocs url html
+    let mlink@(ModuleLink _ manchor) = moduleLink target
+    html <- fetch' mlink
+    let modl = parseModuleDocs mlink html
         desc = case manchor of
           Nothing -> prettyHtml <$> mDescription modl
           Just an -> prettyDecl <$> lookupDecl an modl
     viewInTerminal $ fromMaybe mempty desc
   ViewModuleInterface ix ->
     getTarget ix $ \target -> do
-    let ModuleLink url _ = moduleLink target
+    let url = moduleLink target
     html <- fetch' url
     let modl = parseModuleDocs url html
     State.modify' $ \s -> s
@@ -210,44 +225,62 @@ evaluate = \case
     withModuleContext viewModuleDocs
   ViewModuleDocs (Just ix) ->
     getTarget ix $ \target -> do
-    let ModuleLink url _ = moduleLink target
+    let url = moduleLink target
     html <- fetch' url
     viewModuleDocs (parseModuleDocs url html)
   ViewSource ix ->
     getTarget ix editSource
   ViewPackageModules ix -> do
     context <- State.gets sContext
-    case context of
-      ContextEmpty -> liftIO $ putStrLn "no package to show"
+    package <- case context of
+      ContextEmpty -> fail "no package to show"
       ContextSearch _ _ ->
         getTarget ix $ \target -> do
         let url = packageUrl $ moduleLink target
         html <- fetch' url
-        let package = parsePackageDocs html
+        let package = parsePackageDocs url html
         viewPackageModules package
+        return package
+      ContextModule module' -> do
+        let url = packageUrl $ mUrl module'
+        html <- fetch' url
+        let package = parsePackageDocs url html
+        viewPackageModules package
+        return package
+      ContextPackage package -> do
+        viewPackageModules package
+        return package
+    State.modify' $ \s -> s
+        { sContext = ContextPackage package }
 
-      ContextModule _ -> undefined
+-- | Get an element from a one-indexed index
+elemAt :: Int -> [a] -> M a
+elemAt ix =
+  maybe (fail "Index out of range") return
+  . listToMaybe
+  . drop (ix - 1)
 
-
-withSearchContext :: ([TargetGroup] -> M ()) -> M ()
+withSearchContext :: ([TargetGroup] -> M a) -> M a
 withSearchContext f = do
   context <- State.gets sContext
   case context of
     ContextSearch _ results -> f results
-    _ -> liftIO $ putStrLn "No search results available"
+    _ -> fail "No search results available"
 
-withModuleContext :: (Module -> M ()) -> M ()
+withModuleContext :: (Module -> M a) -> M a
 withModuleContext f = do
   context <- State.gets sContext
   case context of
     ContextModule mdocs -> f mdocs
-    _ -> liftIO $ putStrLn "No module selected"
+    _ -> fail "No module selected"
 
-getTarget :: Int -> (Hoogle.Target -> M ()) -> M ()
+getTarget :: Int -> (Hoogle.Target -> M a) -> M a
 getTarget ix f = getTargetGroup ix (f <=< promptSelectOne)
 
-getTargetGroup :: Int -> (TargetGroup -> M ()) -> M ()
-getTargetGroup ix f = withSearchContext $ f . (!! (ix - 1))
+getTargetGroup :: Int -> (TargetGroup -> M a) -> M a
+getTargetGroup ix f = withSearchContext $ \results -> do
+  el <- elemAt ix results
+  f el
 
 viewSearchResults :: MonadIO m => [TargetGroup] -> m ()
 viewSearchResults
@@ -268,8 +301,9 @@ viewModuleInterface
 viewModuleDocs :: MonadIO m => Module -> m ()
 viewModuleDocs = viewInEditor . prettyModule
 
-viewPackageModules :: Package -> m ()
-viewPackageModules = undefined
+viewPackageModules :: MonadIO m => Package -> m ()
+viewPackageModules (Package _ modules _) =
+  viewInTerminal $ P.vsep $ numbered (P.text <$> modules)
 
 promptSelectOne :: TargetGroup -> M Hoogle.Target
 promptSelectOne tgroup =
@@ -450,4 +484,20 @@ moduleLink target = ModuleLink (dropAnchor url) (takeAnchor url)
 
 packageUrl :: ModuleLink -> PackageUrl
 packageUrl (ModuleLink url _) = PackageUrl $ fst $ breakOn "docs" url
+
+packageModuleUrl :: PackageUrl -> String -> ModuleLink
+packageModuleUrl (PackageUrl purl) moduleName =
+  ModuleLink url Nothing
+  where
+    url =
+      stripSuffix "/" purl
+      ++ "/docs/"
+      ++ map (replace '.' '-') moduleName
+      ++ ".html"
+    -- replace this with that
+    replace this that x
+      | x == this = that
+      | otherwise = x
+
+    stripSuffix x s = maybe s reverse $ stripPrefix x $ reverse s
 

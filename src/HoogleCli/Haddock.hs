@@ -58,7 +58,8 @@ data Module = Module
   { mTitle :: String
   , mDescription :: Maybe Html
   , mDeclarations :: [Declaration]
-  , mUrl :: Url
+    -- | link without anchor
+  , mUrl :: ModuleLink
   }
 
 data Package = Package
@@ -80,8 +81,12 @@ parseHoogleHtml
   . Text.pack
   . (\v -> "<div>" <> v <> "</div>")
 
-parseModuleDocs :: Url -> HtmlPage -> Module
-parseModuleDocs url (HtmlPage root) = head $ do
+pageContent :: [a] -> a
+pageContent [] = error "Unable to parse page"
+pageContent (x:_) = x
+
+parseModuleDocs :: ModuleLink -> HtmlPage -> Module
+parseModuleDocs (ModuleLink url _) (HtmlPage root) = pageContent $ do
   body    <- findM (is "body" . tag) $ children root
   content <- findM (is "content" . id_) $ children body
   let mtitle = do
@@ -93,7 +98,7 @@ parseModuleDocs url (HtmlPage root) = head $ do
     { mTitle = Text.unpack $ maybe "" innerText mtitle
     , mDescription = Html <$> mdescription
     , mDeclarations = mapMaybe (parseDeclaration . Html) $ children interface
-    , mUrl = url
+    , mUrl = ModuleLink url Nothing
     }
 
 parseDeclaration :: Html -> Maybe Declaration
@@ -113,25 +118,35 @@ parseDeclaration (Html el) = do
           (Xml.elementName e) { Xml.nameLocalName = t }
       }
 
-parsePackageDocs :: HtmlPage -> Package
-parsePackageDocs (HtmlPage root) = head $ do
-  findM (is "body" . tag) (children root)
-  findM (is "content" . id_) (children root)
-  findM (is "modules" . id_) (children root)
-  findM (is "module-list" . id_) (children root)
-  find (is "module" . class_)
+parsePackageDocs :: PackageUrl -> HtmlPage -> Package
+parsePackageDocs url (HtmlPage root) = pageContent $ do
+  body    <- findM (is "body" . tag) (children root)
+  content <- findM (is "content" . id_) (children body)
+  title   <- findM (is "h1" . tag) (children content)
+    >>= findM (is "a" . tag) . children
+  moduleList <- findM (is "modules" . id_) (children content)
+    >>= findM (is "module-list" . id_) . children
+  let modules = innerText <$> findRec (is "module" . class_) moduleList
+  return Package
+    { pTitle = Text.unpack $ innerText title
+    , pModules = Text.unpack <$> modules
+    , pUrl = url
+    }
 
-data Package = Package
-  { pTitle :: String
-  , pModules :: [String]
-  , pUrl :: PackageUrl
-  }
+-- | postorder traversal returning elements that match a predicate.
+-- If the predicate is matched, the element's children are not explored
+findRec :: (Xml.Element -> Bool) -> Xml.Element -> [Xml.Element]
+findRec test root = go [root] []
+  where
+    go [] acc = acc
+    go (el:siblings) acc
+      | test el = el : go siblings acc
+      | otherwise = go (children el) (go siblings acc)
 
-  undefined
-
+-- | Find one. Fail otherwise.
 findM :: (MonadFail m, Foldable t) => (a -> Bool) -> t a -> m a
-findM f x = do
-  Just a <- return $ find f x
+findM f xs = do
+  Just a <- return $ find f xs
   return a
 
 is :: Eq a => a -> a -> Bool
@@ -294,7 +309,7 @@ prettyHtml = fromMaybe mempty . unXMLElement . toElement
 -- | Convert an html page into a src file and inform of line
 -- number of SourceLink
 fileInfo :: SourceLink -> HtmlPage -> FileInfo
-fileInfo (SourceLink _ anchor) (HtmlPage root) = head $ do
+fileInfo (SourceLink _ anchor) (HtmlPage root) = pageContent $ do
   head_ <- filter (is "head" . tag) $ children root
   title <- filter (is "title" . tag) $ children head_
   let filename = Text.unpack $ Text.replace "/" "." $ innerText title <> ".hs"
