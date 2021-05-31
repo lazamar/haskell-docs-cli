@@ -25,6 +25,7 @@ import Data.Foldable (fold)
 import Control.Monad (foldM)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.List hiding (groupBy)
+import Data.Maybe (isJust)
 import Data.Char (isSpace)
 import Data.Text (Text)
 import Data.Set (Set)
@@ -226,14 +227,15 @@ instance IsHtml HtmlPage where
 
 -- | Render Haddock's Html
 prettyHtml :: IsHtml html => html -> P.Doc
-prettyHtml = fromMaybe mempty . unXMLElement . toElement
+prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
   where
-    unXMLElement e = style e . fold =<< unXMLChildren e
-    unXMLChildren e =
-      case mapMaybe unXMLNode (Xml.elementNodes e) of
+    unXMLElement stack e = style stack' e . fold =<< unXMLChildren stack' e
+      where stack' = (tag e, class_ e):stack
+    unXMLChildren stack e =
+      case mapMaybe (unXMLNode stack) (Xml.elementNodes e) of
         [] -> Nothing
         xs -> Just xs
-    unXMLNode = \case
+    unXMLNode stack = \case
       Xml.NodeInstruction _ -> Nothing
       Xml.NodeContent txt | Text.null txt -> Nothing
       Xml.NodeContent txt -> Just
@@ -241,7 +243,7 @@ prettyHtml = fromMaybe mempty . unXMLElement . toElement
         $ unescapeHTML
         $ Text.unpack txt
       Xml.NodeComment _ -> Nothing
-      Xml.NodeElement e -> unXMLElement e
+      Xml.NodeElement e -> unXMLElement stack e
 
     docwords f [] = P.fillCat (f [])
     docwords f (x:xs)
@@ -249,9 +251,10 @@ prettyHtml = fromMaybe mempty . unXMLElement . toElement
     docwords f xs = docwords (f . (P.text w :)) ys
       where (w, ys) = break isSpace xs
 
-    style e m = classStyle e m  >>= tagStyle e
+    -- | given an element, style its children
+    style stack e m = classStyle stack e m  >>= tagStyle stack e
 
-    classStyle e = case class_ e of
+    classStyle stack e = case class_ e of
       ""                  -> Just
       -- layout
       "doc"               -> Just . P.nest 2
@@ -261,9 +264,10 @@ prettyHtml = fromMaybe mempty . unXMLElement . toElement
       -- a declaration wrapper
       "top"               -> const
                               $ Just . mappend P.hardline . P.vsep
-                              $ mapMaybe unXMLElement (children e)
+                              $ mapMaybe (unXMLElement stack) (children e)
       -- style
-      "caption"           -> Just . P.bold
+      "caption"           | "subs fields" `elem` map snd stack -> hide
+                          | otherwise ->  Just . P.bold
       "name"              -> Just . P.dullgreen
       "def"               -> Just . P.bold
       "fixity"            -> Just . italics . P.black
@@ -271,10 +275,10 @@ prettyHtml = fromMaybe mempty . unXMLElement . toElement
       "link"              -> hide
       "selflink"          -> hide
       -- modify
-      "module-header"     -> const $ unXMLElement =<< findM (is "caption" . class_) (children e)
+      "module-header"     -> const $ unXMLElement stack =<< findM (is "caption" . class_) (children e)
       _                   -> Just
 
-    tagStyle e = case tag e of
+    tagStyle stack e = case tag e of
        "h1"      -> Just . linebreak . mappend (P.text "# ")
        "h2"      -> Just . linebreak . mappend (P.text "## ")
        "h3"      -> Just . linebreak . mappend (P.text "### ")
@@ -292,20 +296,36 @@ prettyHtml = fromMaybe mempty . unXMLElement . toElement
        "dt"      -> Just . P.bold . linebreak
        "dd"      -> Just . linebreak
        "summary" -> Just . linebreak
-       "ol"      -> const $ Just . linebreak . P.vsep . numbered $ mapMaybe unXMLElement (children e)
-       "ul"      -> const $ Just . linebreak . P.vsep . map bullet $ mapMaybe unXMLElement (children e)
+       "ol"      -> const
+                    $ Just . linebreak . P.vsep . numbered
+                    $ mapMaybe (unXMLElement stack) (children e)
+       "ul"      -> const
+                    $ Just . linebreak . P.vsep . map bullet
+                    $ mapMaybe (unXMLElement stack) (children e)
        "td"      | isInstanceDetails e -> hide
                  | otherwise -> Just
        "table"   -> const
-                      $ Just .  flip mappend P.hardline . P.vsep . map bullet
-                      $ mapMaybe unXMLElement (children e)
+                    $ Just .  flip mappend P.hardline . P.vsep . map bullet
+                    $ mapMaybe (unXMLElement stack)
+                    $ joinSubsections (children e)
        -- don't show instance details
        _         -> Just
 
-    isInstanceDetails e = tag e == "td" && attr "colspan" e == "2"
+    isInstanceDetails e = isSubsection e && isJust (findM (is "details" . tag) (children e))
     linebreak doc = P.hardline <> doc <> P.hardline
     italics = P.Italicize True
     hide = const Nothing
+    isSubsection e = tag e == "td" && attr "colspan" e == "2"
+
+    -- Haddock has a pattern of using a row with colspan=2 to store content
+    -- that is a subsection of the previous row. Here we bundle these two rows
+    -- together.
+    joinSubsections [] = []
+    joinSubsections [x] = [x]
+    joinSubsections (a:b:xs)
+      | Just _ <- findM (is "2" . attr "colspan") (children b) =
+        joinSubsections (a { Xml.elementNodes = Xml.elementNodes a ++ Xml.elementNodes b } : xs)
+      | otherwise = a:joinSubsections (b:xs)
 
 -- | Convert an html page into a src file and inform of line
 -- number of SourceLink

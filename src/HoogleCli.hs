@@ -195,9 +195,7 @@ evaluate = \case
         url <- packageModuleUrl purl <$> elemAt ix modules
         html <- fetch' url
         let modl = parseModuleDocs url html
-        State.modify' $ \s -> s
-            { sContext = ContextModule modl
-            }
+        State.modify' $ \s -> s{ sContext = ContextModule modl }
         viewModuleInterface modl
   ViewExtendedDocs ix ->
     getTargetGroup ix $ \tgroup -> do
