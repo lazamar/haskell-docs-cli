@@ -433,7 +433,10 @@ prettyModule (Module name minfo decls _) =
 
 prettyDecl :: Declaration -> P.Doc
 prettyDecl Declaration{..} =
-  P.vsep $ map prettyHtml (dSignature:dContent)
+  P.vsep
+    $ map prettyHtml (dSignature:dContent)
+    -- ad-hoc link colour
+    ++ [P.cyan $ P.text $ getUrl dModuleUrl]
 
 lookupDecl :: Anchor -> Module -> Maybe Declaration
 lookupDecl anchor (Module _ _ decls _) =
