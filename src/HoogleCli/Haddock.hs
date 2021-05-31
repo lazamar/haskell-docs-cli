@@ -266,7 +266,7 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
                               $ Just . mappend P.hardline . P.vsep
                               $ mapMaybe (unXMLElement stack) (children e)
       -- style
-      "caption"           | "subs fields" `elem` map snd stack -> hide
+      "caption"           | underClass "subs fields" -> hide
                           | otherwise ->  Just . P.bold
       "name"              -> Just . P.dullgreen
       "def"               -> Just . P.bold
@@ -277,6 +277,9 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
       -- modify
       "module-header"     -> const $ unXMLElement stack =<< findM (is "caption" . class_) (children e)
       _                   -> Just
+      where
+        underClass v = v `elem` map snd stack
+
 
     tagStyle stack e = case tag e of
        "h1"      -> Just . linebreak . mappend (P.text "# ")
@@ -300,7 +303,14 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
                     $ Just . linebreak . P.vsep . numbered
                     $ mapMaybe (unXMLElement stack) (children e)
        "ul"      -> const
-                    $ Just . linebreak . P.vsep . map bullet
+                    $ Just . linebreak
+                    $ (if underClass "subs fields"
+                        then P.encloseSep
+                              (P.fill 2 P.lbrace)
+                              (P.hardline <> P.rbrace)
+                              (P.fill 2 P.comma)
+                        else P.vsep . map bullet
+                      )
                     $ mapMaybe (unXMLElement stack) (children e)
        "td"      | isInstanceDetails e -> hide
                  | otherwise -> Just
@@ -310,6 +320,8 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
                     $ joinSubsections (children e)
        -- don't show instance details
        _         -> Just
+      where
+        underClass v = v `elem` map snd stack
 
     isInstanceDetails e = isSubsection e && isJust (findM (is "details" . tag) (children e))
     linebreak doc = P.hardline <> doc <> P.hardline
