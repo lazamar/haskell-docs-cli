@@ -73,7 +73,8 @@ data Cmd
   | ViewExtendedDocs Index           -- ^ declaration's docs available in the haddock page
   | ViewModuleDocs (Maybe Index)     -- ^ full haddock for module
   | ViewModuleInterface Index        -- ^ all function signatures
-  | ViewPackageModules (Maybe Index) -- ^ list modules from a package
+  | ViewPackageModules               -- ^ list modules from a package
+      (Maybe (Either String Index))
   | Quit
 
 type M a = StateT ShellState (CLI.InputT IO) a
@@ -88,6 +89,10 @@ runSearch term = do
       ]
   res <- fetch req
   either error return $ Aeson.eitherDecode res
+
+hooglePackageUrl :: String -> PackageUrl
+hooglePackageUrl pname =
+  PackageUrl $ "https://hackage.haskell.org/package/" ++ pname
 
 toGroups :: [Hoogle.Target] -> [TargetGroup]
 toGroups
@@ -148,7 +153,14 @@ parseCommand str = case str of
         "module-doc" -> mIntCmd ViewModuleDocs
         "edoc" -> intCmd ViewExtendedDocs
         "interface" -> intCmd ViewModuleInterface
-        "package" -> mIntCmd ViewPackageModules
+        "package"
+          | null args
+          -> Right $ ViewPackageModules Nothing
+          | Just n <- readMaybe args
+          -> Right $ ViewPackageModules $ Just $ Right n
+          | otherwise
+          -> Right $ ViewPackageModules $ Just $ Left args
+
         "quit" -> Right Quit
         _ -> error $ "Unknown command: " <> cmd
   x | Just n <- readMaybe x -> Right (Select n)
@@ -223,19 +235,25 @@ evaluate = \case
     viewModuleDocs (parseModuleDocs url html)
   ViewSource ix ->
     getTarget ix editSource
-  ViewPackageModules mix -> do
+  ViewPackageModules (Just (Left term)) -> do
+    let url = hooglePackageUrl term
+    html <- fetch' url
+    let package = parsePackageDocs url html
+    viewPackageModules package
+    State.modify' $ \s -> s{ sContext = ContextPackage package }
+  ViewPackageModules msearch -> do
     context <- State.gets sContext
     package <- case context of
       ContextEmpty -> fail "no package to show"
       ContextSearch _ _
-        | Nothing <- mix -> fail "no option selected"
-        | Just ix <- mix ->
-        getTarget ix $ \target -> do
-        let url = packageUrl $ moduleUrl target
-        html <- fetch' url
-        let package = parsePackageDocs url html
-        viewPackageModules package
-        return package
+        | Just (Right ix) <- msearch ->
+          getTarget ix $ \target -> do
+          let url = packageUrl $ moduleUrl target
+          html <- fetch' url
+          let package = parsePackageDocs url html
+          viewPackageModules package
+          return package
+        | otherwise -> fail "no option selected"
       ContextModule module' -> do
         let url = packageUrl $ mUrl module'
         html <- fetch' url
