@@ -188,8 +188,8 @@ evaluate = \case
     case context of
       ContextEmpty -> fail "no context"
       ContextSearch _ _ -> getTargetGroup ix (viewInTerminal . viewFull)
-      ContextModule mdocs -> do
-        decl <- elemAt ix (mDeclarations mdocs)
+      ContextModule module' -> do
+        decl <- elemAt ix (mDeclarations module')
         viewInTerminal $ prettyDecl decl
       ContextPackage (Package _ modules purl) -> do
         url <- packageModuleUrl purl <$> elemAt ix modules
@@ -202,16 +202,16 @@ evaluate = \case
   ViewExtendedDocs ix ->
     getTargetGroup ix $ \tgroup -> do
     let target = NonEmpty.head tgroup
-    let mlink@(ModuleLink _ manchor) = moduleLink target
-    html <- fetch' mlink
-    let modl = parseModuleDocs mlink html
-        desc = case manchor of
+        url = moduleUrl target
+    html <- fetch' url
+    let modl = parseModuleDocs url html
+        desc = case declUrl target of
           Nothing -> prettyHtml <$> mDescription modl
-          Just an -> prettyDecl <$> lookupDecl an modl
+          Just (DeclUrl _ anchor) -> prettyDecl <$> lookupDecl anchor modl
     viewInTerminal $ fromMaybe mempty desc
   ViewModuleInterface ix ->
     getTarget ix $ \target -> do
-    let url = moduleLink target
+    let url = moduleUrl target
     html <- fetch' url
     let modl = parseModuleDocs url html
     State.modify' $ \s -> s{ sContext = ContextModule modl }
@@ -220,7 +220,7 @@ evaluate = \case
     withModuleContext viewModuleDocs
   ViewModuleDocs (Just ix) ->
     getTarget ix $ \target -> do
-    let url = moduleLink target
+    let url = moduleUrl target
     html <- fetch' url
     viewModuleDocs (parseModuleDocs url html)
   ViewSource ix ->
@@ -233,7 +233,7 @@ evaluate = \case
         | Nothing <- mix -> fail "no option selected"
         | Just ix <- mix ->
         getTarget ix $ \target -> do
-        let url = packageUrl $ moduleLink target
+        let url = packageUrl $ moduleUrl target
         html <- fetch' url
         let package = parsePackageDocs url html
         viewPackageModules package
@@ -365,7 +365,9 @@ getEditor = getEnv "VISUAL" <|> getEnv "EDITOR" <|> defaultEditor
 
 class HasUrl a where
   getUrl :: a -> Url
-instance HasUrl ModuleLink where getUrl (ModuleLink url _) = url
+instance HasUrl DeclUrl    where getUrl (DeclUrl url anchor) =
+                                   getUrl url ++ "#" ++ Text.unpack anchor
+instance HasUrl ModuleUrl  where getUrl (ModuleUrl url) = url
 instance HasUrl SourceLink where getUrl (SourceLink url _) = url
 instance HasUrl PackageUrl where getUrl (PackageUrl url) = url
 instance HasUrl Url        where getUrl url = url
@@ -431,7 +433,7 @@ prettyModule (Module name minfo decls _) =
 
 prettyDecl :: Declaration -> P.Doc
 prettyDecl Declaration{..} =
-  P.vsep $ map prettyHtml $ dSignature:dContent
+  P.vsep $ map prettyHtml (dSignature:dContent)
 
 lookupDecl :: Anchor -> Module -> Maybe Declaration
 lookupDecl anchor (Module _ _ decls _) =
@@ -459,31 +461,37 @@ viewFull tgroup = P.vsep
 -- | Get URL for source file for a target
 sourceLink :: Hoogle.Target -> M (Maybe SourceLink)
 sourceLink target = do
-  let mlink@(ModuleLink _ manchor) = moduleLink target
-  case manchor of
+  case declUrl target of
     Nothing -> return Nothing
-    Just anchor -> do
-      html <- fetch' mlink
-      let links = sourceLinks mlink html
+    Just (DeclUrl murl anchor) -> do
+      html <- fetch' murl
+      let links = sourceLinks murl html
       case lookup anchor links of
         Nothing -> error $ unlines $
           [ "anchor missing in module docs"
-          , show mlink
+          , show murl
           ] ++ map show links
         Just link -> return $ Just link
 
 -- | Get URL for module documentation
-moduleLink :: Hoogle.Target -> ModuleLink
-moduleLink target = ModuleLink (dropAnchor url) (takeAnchor url)
+moduleUrl :: Hoogle.Target -> ModuleUrl
+moduleUrl target = ModuleUrl (dropAnchor url)
   where
     url = Hoogle.targetURL target
 
-packageUrl :: ModuleLink -> PackageUrl
-packageUrl (ModuleLink url _) = PackageUrl $ fst $ breakOn "docs" url
+declUrl :: Hoogle.Target -> Maybe DeclUrl
+declUrl target = do
+  anchor <- takeAnchor url
+  return $ DeclUrl (moduleUrl target) anchor
+  where
+    url = Hoogle.targetURL target
 
-packageModuleUrl :: PackageUrl -> String -> ModuleLink
+packageUrl :: ModuleUrl -> PackageUrl
+packageUrl (ModuleUrl url) = PackageUrl $ fst $ breakOn "docs" url
+
+packageModuleUrl :: PackageUrl -> String -> ModuleUrl
 packageModuleUrl (PackageUrl purl) moduleName =
-  ModuleLink url Nothing
+  ModuleUrl url
   where
     url =
       stripSuffix "/" purl

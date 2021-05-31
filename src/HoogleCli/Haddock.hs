@@ -52,14 +52,14 @@ data Declaration = Declaration
   { dAnchors :: Set Anchor
   , dSignature :: Html
   , dContent :: [Html]
+  , dModuleUrl :: ModuleUrl
   }
 
 data Module = Module
   { mTitle :: String
   , mDescription :: Maybe Html
   , mDeclarations :: [Declaration]
-    -- | link without anchor
-  , mUrl :: ModuleLink
+  , mUrl :: ModuleUrl
   }
 
 data Package = Package
@@ -85,8 +85,8 @@ pageContent :: [a] -> a
 pageContent [] = error "Unable to parse page"
 pageContent (x:_) = x
 
-parseModuleDocs :: ModuleLink -> HtmlPage -> Module
-parseModuleDocs (ModuleLink url _) (HtmlPage root) = pageContent $ do
+parseModuleDocs :: ModuleUrl -> HtmlPage -> Module
+parseModuleDocs murl (HtmlPage root) = pageContent $ do
   body    <- findM (is "body" . tag) $ children root
   content <- findM (is "content" . id_) $ children body
   let mtitle = do
@@ -97,12 +97,12 @@ parseModuleDocs (ModuleLink url _) (HtmlPage root) = pageContent $ do
   return Module
     { mTitle = Text.unpack $ maybe "" innerText mtitle
     , mDescription = Html <$> mdescription
-    , mDeclarations = mapMaybe (parseDeclaration . Html) $ children interface
-    , mUrl = ModuleLink url Nothing
+    , mDeclarations = mapMaybe (parseDeclaration murl . Html) $ children interface
+    , mUrl = murl
     }
 
-parseDeclaration :: Html -> Maybe Declaration
-parseDeclaration (Html el) = do
+parseDeclaration :: ModuleUrl -> Html -> Maybe Declaration
+parseDeclaration moduleUrl (Html el) = do
   decl <- findM (is "top" . class_) [el]
   ([sig], content) <- return
     $ partition (is "src" . class_) $ children decl
@@ -111,6 +111,7 @@ parseDeclaration (Html el) = do
     { dAnchors = Set.fromList $ anchors el
     , dSignature = Html $ asTag "div" sig
     , dContent = Html <$> content
+    , dModuleUrl = moduleUrl
     }
   where
     asTag t e = e
@@ -187,8 +188,8 @@ anchors el = f $ foldMap anchors (children el)
       class_ e == "def" &&
       (Text.isPrefixOf "t:" (id_ e) || Text.isPrefixOf "v:" (id_ e))
 
-sourceLinks :: ModuleLink -> HtmlPage -> [(Anchor, SourceLink)]
-sourceLinks (ModuleLink modLink _) (HtmlPage root) = do
+sourceLinks :: ModuleUrl -> HtmlPage -> [(Anchor, SourceLink)]
+sourceLinks (ModuleUrl murl) (HtmlPage root) = do
   body        <- filter (is "body" . tag) $ children root
   content     <- filter (is "content" . id_) $ children body
   interface   <- filter (is "interface" . id_) $ children content
@@ -207,7 +208,7 @@ sourceLinks (ModuleLink modLink _) (HtmlPage root) = do
   where
     parent = reverse . tail . dropWhile (/= '/') . reverse
 
-    toSourceUrl relativeUrl = parent modLink <> "/" <> Text.unpack relativeUrl
+    toSourceUrl relativeUrl = parent murl <> "/" <> Text.unpack relativeUrl
 
 
 -- ================================

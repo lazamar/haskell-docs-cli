@@ -24,12 +24,14 @@ takeAnchor url = case drop 1 $ dropWhile (/= '#') url of
 
 type TargetGroup = NonEmpty Hoogle.Target
 
--- | Link to an item in a module page
-data ModuleLink = ModuleLink Url (Maybe Anchor)
-  deriving (Show)
+data DeclUrl = DeclUrl ModuleUrl Anchor
+  deriving Show
 
 -- | Link to an item in a src page
 data SourceLink = SourceLink Url Anchor
+  deriving (Show)
+
+newtype ModuleUrl = ModuleUrl Url
   deriving (Show)
 
 -- | Url to a Haddock package page
