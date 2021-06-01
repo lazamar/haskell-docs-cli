@@ -77,6 +77,11 @@ data Cmd
       (Maybe (Either String Index))
   | Quit
 
+data Selection
+  = SelectIndex Index
+  | SelectSearch String
+  | SelectDefault
+
 type M a = StateT ShellState (CLI.InputT IO) a
 
 runSearch :: String -> M [Hoogle.Target]
