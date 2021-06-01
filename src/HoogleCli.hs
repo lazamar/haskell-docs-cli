@@ -9,12 +9,13 @@ module HoogleCli
   ) where
 
 import Control.Applicative ((<|>))
+import Control.Exception (finally)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad ((<=<))
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.Trans.State.Lazy (StateT)
 import Data.Foldable (toList)
-import Data.Functor (void, (<&>))
+import Data.Functor ((<&>))
 import Data.Bifunctor (bimap)
 import Data.ByteString.Lazy (ByteString)
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -25,7 +26,7 @@ import Data.List.Extra (breakOn)
 import Data.Char (isSpace)
 import Data.Map.Strict (Map)
 import System.Environment (getEnv)
-import System.IO (stdout, Handle)
+import System.IO (hClose, stdout, Handle)
 import System.IO.Temp (withSystemTempFile)
 
 import HoogleCli.Types
@@ -76,11 +77,6 @@ data Cmd
   | ViewPackageModules               -- ^ list modules from a package
       (Maybe (Either String Index))
   | Quit
-
-data Selection
-  = SelectIndex Index
-  | SelectSearch String
-  | SelectDefault
 
 type M a = StateT ShellState (CLI.InputT IO) a
 
@@ -207,7 +203,11 @@ evaluate = \case
       ContextSearch _ _ -> getTargetGroup ix (viewInTerminal . viewFull)
       ContextModule module' -> do
         decl <- elemAt ix (mDeclarations module')
-        viewInTerminal $ prettyDecl decl
+        viewInTerminal $ P.vsep
+          [ prettyDecl decl
+            -- ad-hoc link colour
+          , P.cyan $ P.text $ getUrl (dModuleUrl decl)
+          ]
       ContextPackage (Package _ modules purl) -> do
         url <- packageModuleUrl purl <$> elemAt ix modules
         html <- fetch' url
@@ -239,7 +239,7 @@ evaluate = \case
     html <- fetch' url
     viewModuleDocs (parseModuleDocs url html)
   ViewSource ix ->
-    getTarget ix editSource
+    getTarget ix viewSource
   ViewPackageModules (Just (Left term)) -> do
     let url = hooglePackageUrl term
     html <- fetch' url
@@ -309,14 +309,14 @@ viewSearchResults
 
 viewModuleInterface :: MonadIO m => Module -> m ()
 viewModuleInterface
-  = viewInTerminal
+  = viewInTerminalPaged
   . P.vsep
   . numbered
   . map (prettyHtml . dSignature)
   . mDeclarations
 
 viewModuleDocs :: MonadIO m => Module -> m ()
-viewModuleDocs = viewInEditor . prettyModule
+viewModuleDocs = viewInTerminalPaged . prettyModule
 
 viewPackageModules :: MonadIO m => Package -> m ()
 viewPackageModules (Package _ modules _) =
@@ -348,12 +348,17 @@ promptSelectOne tgroup =
 viewInTerminal :: MonadIO m => P.Doc -> m ()
 viewInTerminal = printDoc stdout
 
-viewInEditor :: MonadIO m => P.Doc -> m ()
-viewInEditor doc = liftIO $ do
-  withSystemTempFile "doc" $ \fullpath handle -> do
-    printDoc handle $ P.plain doc
-    editor <- getEditor
-    void $ Process.system (editor ++ " " ++ fullpath)
+viewInTerminalPaged :: MonadIO m => P.Doc -> m ()
+viewInTerminalPaged doc = withPager $ \handle -> printDoc handle doc
+
+withPager :: MonadIO m => (Handle -> IO a)  -> m a
+withPager act = liftIO $ do
+  let cmd = (Process.proc "less" ["-eFRX"]) { Process.std_in = Process.CreatePipe }
+  Process.withCreateProcess cmd
+     $ \(Just hin) _ _ p -> do
+       res <- act hin `finally` hClose hin
+       _   <- Process.waitForProcess p
+       return res
 
 printDoc :: MonadIO m => Handle -> P.Doc -> m ()
 printDoc handle doc = liftIO $ do
@@ -361,23 +366,23 @@ printDoc handle doc = liftIO $ do
   P.displayIO handle $ P.renderSmart 1 width doc
   putStrLn ""
 
-editSource :: Hoogle.Target -> M ()
-editSource target = do
+viewSource :: Hoogle.Target -> M ()
+viewSource target = do
   mlink <- sourceLink target
   case mlink of
     Nothing -> liftIO $ putStrLn "no source available"
     Just link -> do
       html <- fetch' link
-      view (fileInfo link html)
-
-view :: FileInfo -> M ()
-view (FileInfo filename mline content) = do
-  let line = maybe "" (("+" <>) . show) mline
-  liftIO $ do
-    editor <- getEditor
-    withSystemTempFile filename $ \fullpath handle -> do
-      Text.hPutStr handle content
-      Process.callCommand $ unwords [editor, fullpath, line]
+      viewInEditor (fileInfo link html)
+  where
+    viewInEditor :: FileInfo -> M ()
+    viewInEditor (FileInfo filename mline content) = do
+      let line = maybe "" (("+" <>) . show) mline
+      liftIO $ do
+        editor <- getEditor
+        withSystemTempFile filename $ \fullpath handle -> do
+          Text.hPutStr handle content
+          Process.callCommand $ unwords [editor, fullpath, line]
 
 getEditor :: IO String
 getEditor = getEnv "VISUAL" <|> getEnv "EDITOR" <|> defaultEditor
@@ -454,10 +459,7 @@ prettyModule (Module name minfo decls _) =
 
 prettyDecl :: Declaration -> P.Doc
 prettyDecl Declaration{..} =
-  P.vsep
-    $ map prettyHtml (dSignature:dContent)
-    -- ad-hoc link colour
-    ++ [P.cyan $ P.text $ getUrl dModuleUrl]
+  P.vsep $ map prettyHtml (dSignature:dContent)
 
 lookupDecl :: Anchor -> Module -> Maybe Declaration
 lookupDecl anchor (Module _ _ decls _) =
