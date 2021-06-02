@@ -200,10 +200,10 @@ evaluate = \case
     context <- State.gets sContext
     case context of
       ContextEmpty -> fail "no context"
-      ContextSearch _ _ -> getTargetGroup ix (viewInTerminal . viewFull)
+      ContextSearch _ _ -> getTargetGroup ix (viewInTerminalPaged . viewFull)
       ContextModule module' -> do
         decl <- elemAt ix (mDeclarations module')
-        viewInTerminal $ P.vsep
+        viewInTerminalPaged $ P.vsep
           [ prettyDecl decl
             -- ad-hoc link colour
           , P.cyan $ P.text $ getUrl (dModuleUrl decl)
