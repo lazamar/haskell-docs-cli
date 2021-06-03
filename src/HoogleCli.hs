@@ -305,7 +305,7 @@ viewSearchResults
   . P.vsep
   . reverse
   . numbered
-  . map viewCompact
+  . map viewSummary
 
 viewModuleInterface :: MonadIO m => Module -> m ()
 viewModuleInterface
@@ -426,15 +426,16 @@ fetch req = do
 viewItem :: Hoogle.Target -> P.Doc
 viewItem = prettyHtml . parseHoogleHtml . Hoogle.targetItem
 
-viewCompact :: TargetGroup -> P.Doc
-viewCompact tgroup = P.vsep
+viewSummary :: TargetGroup -> P.Doc
+viewSummary tgroup = P.vsep
   [ viewItem $ NonEmpty.head tgroup
   , viewPackageInfoList tgroup
   ]
 
 viewPackageInfoList :: TargetGroup -> P.Doc
 viewPackageInfoList
-  = P.vsep
+  = P.group
+  . P.fillSep
   . P.punctuate P.comma
   . mapMaybe viewPackageAndModule
   . toList
