@@ -353,7 +353,7 @@ viewInTerminalPaged doc = withPager $ \handle -> printDoc handle doc
 
 withPager :: MonadIO m => (Handle -> IO a)  -> m a
 withPager act = liftIO $ do
-  let cmd = (Process.proc "less" ["-eFRX"]) { Process.std_in = Process.CreatePipe }
+  let cmd = (Process.proc "less" ["-FRX"]) { Process.std_in = Process.CreatePipe }
   Process.withCreateProcess cmd
      $ \(Just hin) _ _ p -> do
        res <- act hin `finally` hClose hin
