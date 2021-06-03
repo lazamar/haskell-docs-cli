@@ -360,9 +360,14 @@ withPager act = liftIO $ do
        _   <- Process.waitForProcess p
        return res
 
+-- | Maximum screen width for flowing text.
+-- Fixed-width portions will still overflow that.
+maxWidth :: Int
+maxWidth = 80
+
 printDoc :: MonadIO m => Handle -> P.Doc -> m ()
 printDoc handle doc = liftIO $ do
-  width <- maybe 80 Terminal.width <$> Terminal.size
+  width <- min maxWidth . maybe maxWidth Terminal.width <$> Terminal.size
   P.displayIO handle $ P.renderSmart 1 width doc
   putStrLn ""
 
