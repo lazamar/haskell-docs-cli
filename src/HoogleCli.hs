@@ -73,7 +73,7 @@ data Cmd
                                      -- view/index the current context
   | ViewSource Index                 -- ^ source for target
   | ViewExtendedDocs Index           -- ^ declaration's docs available in the haddock page
-  | ViewModuleDocs (Maybe Index)     -- ^ full haddock for module
+  | ViewModuleDocs Selection         -- ^ full haddock for module
   | ViewModuleInterface Selection    -- ^ all function signatures
   | ViewPackageModules Selection     -- ^ list modules from a package
   | Quit
@@ -104,16 +104,15 @@ withFirstSearchResult
   -> M a
 withFirstSearchResult name valid term act = do
   res <- toGroups <$> runSearch term
-  let firstResult = NonEmpty.head <$> listToMaybe res
-  case firstResult of
+  firstResult <- case NonEmpty.head <$> listToMaybe res of
     Nothing -> fail $ "No results found for '" <> term <> "'"
-    Just x -> do
-    State.modify' $ \s -> s{ sContext = ContextSearch term res }
-    if valid x
-       then act x
-       else do
-         viewSearchResults res
-         fail $ "Failed. First search result is not a " <> name
+    Just x -> return x
+  State.modify' (\s -> s{ sContext = ContextSearch term res })
+  if valid firstResult
+    then act firstResult
+    else do
+      viewSearchResults res
+      fail $ "Failed. First search result is not a " <> name
 
 hooglePackageUrl :: String -> PackageUrl
 hooglePackageUrl pname =
@@ -170,9 +169,6 @@ parseCommand str = case str of
           | Just n <- readMaybe args = Right (f n)
           | otherwise = Left $
             "Command :" <> cmd <> "expects an integer argument"
-        mIntCmd f
-          | null args = Right (f Nothing)
-          | otherwise = intCmd (f . Just)
 
         selection
           | null args                = Default
@@ -181,7 +177,7 @@ parseCommand str = case str of
 
     case cmd of
         "src"        -> intCmd ViewSource
-        "module-doc" -> mIntCmd ViewModuleDocs
+        "module-doc" -> Right $ ViewModuleDocs selection
         "edoc"       -> intCmd ViewExtendedDocs
         "interface"  -> Right $ ViewModuleInterface selection
         "package"    -> Right $ ViewPackageModules selection
@@ -201,9 +197,9 @@ interactive = do
     ContextPackage p  -> liftIO $ putStrLn $ "package: " <> pTitle p
   minput <- lift $ CLI.getInputLine "hoogle> "
   case parseCommand $ fromMaybe "" minput of
-    Left err -> liftIO (putStrLn err) >> interactive
+    Left err   -> liftIO (putStrLn err) >> interactive
     Right Quit -> return ()
-    Right cmd -> evaluate cmd >> interactive
+    Right cmd  -> evaluate cmd >> interactive
 
 evaluate :: Cmd -> M ()
 evaluate cmd = State.gets sContext >>= \context -> case cmd of
@@ -250,13 +246,7 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
           Just (DeclUrl _ anchor) -> prettyDecl <$> lookupDecl anchor modl
     viewInTerminalPaged $ fromMaybe mempty desc
 
-  ViewModuleInterface selection -> do
-    let moduleForTarget target = do
-          let url = moduleUrl target
-          html <- fetch' url
-          let modl = parseModuleDocs url html
-          State.modify' $ \s -> s{ sContext = ContextModule modl }
-          viewModuleInterface modl
+  ViewModuleInterface selection ->
     case selection of
       Default ->
         case context of
@@ -266,15 +256,24 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
         withFirstSearchResult "module" isModule term moduleForTarget
       ItemIndex ix ->
         getTarget ix moduleForTarget
+    where
+      moduleForTarget target = do
+        let url = moduleUrl target
+        html <- fetch' url
+        let modl = parseModuleDocs url html
+        State.modify' $ \s -> s{ sContext = ContextModule modl }
+        viewModuleInterface modl
 
-  ViewModuleDocs Nothing ->
-    withModuleContext viewModuleDocs
-
-  ViewModuleDocs (Just ix) ->
-    getTarget ix $ \target -> do
-    let url = moduleUrl target
-    html <- fetch' url
-    viewModuleDocs (parseModuleDocs url html)
+  ViewModuleDocs selection ->
+    case selection of
+      Default -> withModuleContext viewModuleDocs
+      Search term -> withFirstSearchResult "module" isModule term viewTargetModuleDocs
+      ItemIndex ix -> getTarget ix viewTargetModuleDocs
+    where
+      viewTargetModuleDocs target = do
+        let url = moduleUrl target
+        html <- fetch' url
+        viewModuleDocs (parseModuleDocs url html)
 
   ViewSource ix ->
     getTarget ix viewSource
