@@ -38,6 +38,8 @@ dependencies:
 - transformers
 - ansi-wl-pprint
 - terminal-size
+- mtl
+- exceptions
 
 default-extensions:
 - ApplicativeDo

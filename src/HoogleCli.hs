@@ -1,5 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE GeneralisedNewtypeDeriving #-}
+{-# LANGUAGE DerivingStrategies #-}
 module HoogleCli
   ( interactive
   , evaluate
@@ -8,14 +10,17 @@ module HoogleCli
   , Cmd(..)
   , Selection(..)
   , packageUrl
+  , runCLI
   ) where
 
 import Control.Applicative ((<|>))
 import Control.Exception (finally)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad ((<=<))
+import Control.Monad.Except (ExceptT(..), MonadError, catchError, runExceptT, throwError)
+import Control.Monad.Catch (MonadThrow)
 import Control.Concurrent.MVar (MVar)
-import Control.Monad.Trans.State.Lazy (StateT)
+import Control.Monad.State.Lazy (MonadState, StateT)
 import Data.Foldable (toList)
 import Data.Functor ((<&>))
 import Data.Bifunctor (bimap)
@@ -35,7 +40,7 @@ import HoogleCli.Types
 import HoogleCli.Haddock
 
 import qualified Control.Concurrent.MVar as MVar
-import qualified Control.Monad.Trans.State.Lazy as State
+import qualified Control.Monad.State.Lazy as State
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.List.NonEmpty as NonEmpty
@@ -83,7 +88,30 @@ data Selection
   | ItemIndex Index
   | Default
 
-type M a = StateT ShellState (CLI.InputT IO) a
+newtype M a = M { runM :: ExceptT String (StateT ShellState (CLI.InputT IO)) a }
+  deriving newtype
+    ( Functor
+    , Applicative
+    , Monad
+    , MonadState ShellState
+    , MonadError String
+    , MonadIO
+    , MonadThrow
+    , MonadFail
+    )
+
+runCLI :: CLI.Settings IO -> ShellState -> M a -> IO (Either String a)
+runCLI settings state
+  = CLI.runInputT settings
+  . flip State.evalStateT state
+  . runExceptT
+  . runM
+
+class MonadCLI m where
+  getInputLine :: String -> m (Maybe String)
+
+instance MonadCLI M where
+  getInputLine str = M $ lift $ lift $ CLI.getInputLine str
 
 runSearch :: String -> M [Hoogle.Target]
 runSearch term = do
@@ -105,14 +133,14 @@ withFirstSearchResult
 withFirstSearchResult name valid term act = do
   res <- toGroups <$> runSearch term
   firstResult <- case NonEmpty.head <$> listToMaybe res of
-    Nothing -> fail $ "No results found for '" <> term <> "'"
+    Nothing -> throwError $ "No results found for '" <> term <> "'"
     Just x -> return x
   State.modify' (\s -> s{ sContext = ContextSearch term res })
   if valid firstResult
     then act firstResult
     else do
       viewSearchResults res
-      fail $ "Failed. First search result is not a " <> name
+      throwError $ "First search result is not a " <> name
 
 hooglePackageUrl :: String -> PackageUrl
 hooglePackageUrl pname =
@@ -195,11 +223,14 @@ interactive = do
     ContextSearch t _ -> liftIO $ putStrLn $ "search: " <> t
     ContextModule m   -> liftIO $ putStrLn $ "module: " <> mTitle m
     ContextPackage p  -> liftIO $ putStrLn $ "package: " <> pTitle p
-  minput <- lift $ CLI.getInputLine "hoogle> "
+  minput <- getInputLine "hoogle> "
   case parseCommand $ fromMaybe "" minput of
     Left err   -> liftIO (putStrLn err) >> interactive
     Right Quit -> return ()
-    Right cmd  -> evaluate cmd >> interactive
+    Right cmd  -> do
+      let showFailure e = liftIO $ putStrLn $ "Failed: "<> e
+      evaluate cmd `catchError` showFailure
+      interactive
 
 evaluate :: Cmd -> M ()
 evaluate cmd = State.gets sContext >>= \context -> case cmd of
@@ -219,7 +250,7 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
 
   DefaultCmd (ItemIndex ix) -> do
     case context of
-      ContextEmpty -> fail "no context"
+      ContextEmpty -> throwError "no context"
       ContextSearch _ _ -> getTargetGroup ix (viewInTerminalPaged . viewFull)
       ContextModule module' -> do
         decl <- elemAt ix (mDeclarations module')
@@ -251,7 +282,7 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
       Default ->
         case context of
           ContextModule m -> viewModuleInterface m
-          _ -> fail "no module specified"
+          _ -> throwError "no module specified"
       Search term ->
         withFirstSearchResult "module" isModule term moduleForTarget
       ItemIndex ix ->
@@ -294,12 +325,12 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
         let package = parsePackageDocs url html
         viewPackageModules package
         State.modify' $ \s -> s{ sContext = ContextPackage package }
-      _ -> fail $ "no package for index " <> show ix
+      _ -> throwError $ "no package for index " <> show ix
 
   ViewPackageModules Default -> do
     package <- case context of
-      ContextEmpty -> fail "no package to show"
-      ContextSearch _ _ -> fail "no index selected"
+      ContextEmpty -> throwError "no package to show"
+      ContextSearch _ _ -> throwError "no index selected"
       ContextModule module' -> do
         let url = packageUrl $ mUrl module'
         html <- fetch' url
@@ -314,7 +345,7 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
 -- | Get an element from a one-indexed index
 elemAt :: Int -> [a] -> M a
 elemAt ix =
-  maybe (fail "Index out of range") return
+  maybe (throwError "index out of range") return
   . listToMaybe
   . drop (ix - 1)
 
@@ -323,14 +354,14 @@ withSearchContext f = do
   context <- State.gets sContext
   case context of
     ContextSearch _ results -> f results
-    _ -> fail "No search results available"
+    _ -> throwError "no search results available"
 
 withModuleContext :: (Module -> M a) -> M a
 withModuleContext f = do
   context <- State.gets sContext
   case context of
     ContextModule mdocs -> f mdocs
-    _ -> fail "No module selected"
+    _ -> throwError "No module selected"
 
 getTarget :: Int -> (Hoogle.Target -> M a) -> M a
 getTarget ix f = getTargetGroup ix (f <=< promptSelectOne)
@@ -375,7 +406,7 @@ promptSelectOne tgroup =
           $ numbered
           $ mapMaybe viewPackageAndModule targets
 
-      num <- lift $ CLI.getInputLine ": "
+      num <- getInputLine ": "
       case readMaybe =<< num of
         Just n -> case listToMaybe $ drop (n - 1) targets of
           Just target -> return target
