@@ -1,6 +1,6 @@
 module Main where
 
-import HoogleCli (interactive, evaluate, ShellState(..), Context(..), Cmd(..))
+import HoogleCli (interactive, evaluate, ShellState(..), Context(..), Cmd(..), Selection(..))
 
 import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
 import qualified Network.HTTP.Client as Http
@@ -36,8 +36,8 @@ main' = do
   CLI.runInputT CLI.defaultSettings
     $ State.evalStateT
       (do
-        evaluate (Search "Data.Set")
-        evaluate (Select 1)
+        evaluate (DefaultCmd $ Search "Data.Set")
+        evaluate (DefaultCmd $ ItemIndex 1)
       )
       ShellState
         { sContext = ContextEmpty

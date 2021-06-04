@@ -1,10 +1,12 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiWayIf #-}
 module HoogleCli
   ( interactive
   , evaluate
   , ShellState(..)
   , Context(..)
   , Cmd(..)
+  , Selection(..)
   , packageUrl
   ) where
 
@@ -72,14 +74,14 @@ data Cmd
   | ViewSource Index                 -- ^ source for target
   | ViewExtendedDocs Index           -- ^ declaration's docs available in the haddock page
   | ViewModuleDocs (Maybe Index)     -- ^ full haddock for module
-  | ViewModuleInterface Index        -- ^ all function signatures
+  | ViewModuleInterface Selection    -- ^ all function signatures
   | ViewPackageModules Selection     -- ^ list modules from a package
   | Quit
 
 data Selection
-  = SelectSearch String
-  | SelectFromContext Index
-  | SelectDefault
+  = Search String
+  | ItemIndex Index
+  | Default
 
 type M a = StateT ShellState (CLI.InputT IO) a
 
@@ -93,6 +95,25 @@ runSearch term = do
       ]
   res <- fetch req
   either error return $ Aeson.eitherDecode res
+
+withFirstSearchResult
+  :: String
+  -> (Hoogle.Target -> Bool)
+  -> String
+  -> (Hoogle.Target -> M a)
+  -> M a
+withFirstSearchResult name valid term act = do
+  res <- toGroups <$> runSearch term
+  let firstResult = NonEmpty.head <$> listToMaybe res
+  case firstResult of
+    Nothing -> fail $ "No results found for '" <> term <> "'"
+    Just x -> do
+    State.modify' $ \s -> s{ sContext = ContextSearch term res }
+    if valid x
+       then act x
+       else do
+         viewSearchResults res
+         fail $ "Failed. First search result is not a " <> name
 
 hooglePackageUrl :: String -> PackageUrl
 hooglePackageUrl pname =
@@ -152,24 +173,23 @@ parseCommand str = case str of
         mIntCmd f
           | null args = Right (f Nothing)
           | otherwise = intCmd (f . Just)
-    case cmd of
-        "src" -> intCmd ViewSource
-        "module-doc" -> mIntCmd ViewModuleDocs
-        "edoc" -> intCmd ViewExtendedDocs
-        "interface" -> intCmd ViewModuleInterface
-        "package"
-          | null args
-          -> Right $ ViewPackageModules SelectDefault
-          | Just n <- readMaybe args
-          -> Right $ ViewPackageModules $ SelectFromContext n
-          | otherwise
-          -> Right $ ViewPackageModules $ SelectSearch args
 
-        "quit" -> Right Quit
+        selection
+          | null args                = Default
+          | Just n <- readMaybe args = ItemIndex n
+          | otherwise                = Search args
+
+    case cmd of
+        "src"        -> intCmd ViewSource
+        "module-doc" -> mIntCmd ViewModuleDocs
+        "edoc"       -> intCmd ViewExtendedDocs
+        "interface"  -> Right $ ViewModuleInterface selection
+        "package"    -> Right $ ViewPackageModules selection
+        "quit"       -> Right Quit
         _ -> error $ "Unknown command: " <> cmd
-  x | Just n <- readMaybe x -> Right $ DefaultCmd $ SelectFromContext n
-  [] -> Right $ DefaultCmd SelectDefault
-  _ -> Right $ DefaultCmd $ SelectSearch str
+  x | Just n <- readMaybe x -> Right $ DefaultCmd $ ItemIndex n
+  [] -> Right $ DefaultCmd Default
+  _ -> Right $ DefaultCmd $ Search str
 
 interactive :: M ()
 interactive = do
@@ -188,17 +208,20 @@ interactive = do
 evaluate :: Cmd -> M ()
 evaluate cmd = State.gets sContext >>= \context -> case cmd of
   Quit -> error "impossible"
-  DefaultCmd SelectDefault -> do
+
+  DefaultCmd Default -> do
     case context of
       ContextEmpty            -> return ()
       ContextSearch _ results -> viewSearchResults results
       ContextModule mdocs     -> viewModuleInterface mdocs
       ContextPackage package  -> viewPackageModules package
-  DefaultCmd (SelectSearch str) -> do
+
+  DefaultCmd (Search str) -> do
     res <- toGroups <$> runSearch str
     viewSearchResults res
     State.modify' $ \s -> s{ sContext = ContextSearch str res }
-  DefaultCmd (SelectFromContext ix) -> do
+
+  DefaultCmd (ItemIndex ix) -> do
     case context of
       ContextEmpty -> fail "no context"
       ContextSearch _ _ -> getTargetGroup ix (viewInTerminalPaged . viewFull)
@@ -215,6 +238,7 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
         let modl = parseModuleDocs url html
         State.modify' $ \s -> s{ sContext = ContextModule modl }
         viewModuleInterface modl
+
   ViewExtendedDocs ix ->
     getTargetGroup ix $ \tgroup -> do
     let target = NonEmpty.head tgroup
@@ -225,29 +249,44 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
           Nothing -> prettyHtml <$> mDescription modl
           Just (DeclUrl _ anchor) -> prettyDecl <$> lookupDecl anchor modl
     viewInTerminalPaged $ fromMaybe mempty desc
-  ViewModuleInterface ix ->
-    getTarget ix $ \target -> do
-    let url = moduleUrl target
-    html <- fetch' url
-    let modl = parseModuleDocs url html
-    State.modify' $ \s -> s{ sContext = ContextModule modl }
-    viewModuleInterface modl
+
+  ViewModuleInterface selection -> do
+    let moduleForTarget target = do
+          let url = moduleUrl target
+          html <- fetch' url
+          let modl = parseModuleDocs url html
+          State.modify' $ \s -> s{ sContext = ContextModule modl }
+          viewModuleInterface modl
+    case selection of
+      Default ->
+        case context of
+          ContextModule m -> viewModuleInterface m
+          _ -> fail "no module specified"
+      Search term ->
+        withFirstSearchResult "module" isModule term moduleForTarget
+      ItemIndex ix ->
+        getTarget ix moduleForTarget
+
   ViewModuleDocs Nothing ->
     withModuleContext viewModuleDocs
+
   ViewModuleDocs (Just ix) ->
     getTarget ix $ \target -> do
     let url = moduleUrl target
     html <- fetch' url
     viewModuleDocs (parseModuleDocs url html)
+
   ViewSource ix ->
     getTarget ix viewSource
-  ViewPackageModules (SelectSearch term) -> do
+
+  ViewPackageModules (Search term) -> do
     let url = hooglePackageUrl term
     html <- fetch' url
     let package = parsePackageDocs url html
     viewPackageModules package
     State.modify' $ \s -> s{ sContext = ContextPackage package }
-  ViewPackageModules (SelectFromContext ix) ->
+
+  ViewPackageModules (ItemIndex ix) ->
     case context of
       ContextSearch _ _ ->
         getTarget ix $ \target -> do
@@ -257,7 +296,8 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
         viewPackageModules package
         State.modify' $ \s -> s{ sContext = ContextPackage package }
       _ -> fail $ "no package for index " <> show ix
-  ViewPackageModules SelectDefault -> do
+
+  ViewPackageModules Default -> do
     package <- case context of
       ContextEmpty -> fail "no package to show"
       ContextSearch _ _ -> fail "no index selected"
@@ -425,6 +465,9 @@ fetch req = do
         res <- Http.responseBody <$> Http.httpLbs req manager
         MVar.putMVar mvar res
         return res
+
+isModule :: Hoogle.Target -> Bool
+isModule target = Hoogle.targetType target == "module"
 
 -- ================================
 -- Pretty printing
