@@ -74,9 +74,13 @@ data Cmd
   | ViewExtendedDocs Index           -- ^ declaration's docs available in the haddock page
   | ViewModuleDocs (Maybe Index)     -- ^ full haddock for module
   | ViewModuleInterface Index        -- ^ all function signatures
-  | ViewPackageModules               -- ^ list modules from a package
-      (Maybe (Either String Index))
+  | ViewPackageModules Selection     -- ^ list modules from a package
   | Quit
+
+data Selection
+  = SelectSearch String
+  | SelectFromContext Index
+  | SelectDefault
 
 type M a = StateT ShellState (CLI.InputT IO) a
 
@@ -156,11 +160,11 @@ parseCommand str = case str of
         "interface" -> intCmd ViewModuleInterface
         "package"
           | null args
-          -> Right $ ViewPackageModules Nothing
+          -> Right $ ViewPackageModules SelectDefault
           | Just n <- readMaybe args
-          -> Right $ ViewPackageModules $ Just $ Right n
+          -> Right $ ViewPackageModules $ SelectFromContext n
           | otherwise
-          -> Right $ ViewPackageModules $ Just $ Left args
+          -> Right $ ViewPackageModules $ SelectSearch args
 
         "quit" -> Right Quit
         _ -> error $ "Unknown command: " <> cmd
@@ -183,10 +187,9 @@ interactive = do
     Right cmd -> evaluate cmd >> interactive
 
 evaluate :: Cmd -> M ()
-evaluate = \case
+evaluate cmd = State.gets sContext >>= \context -> case cmd of
   Quit -> error "impossible"
   ViewContext -> do
-    context <- State.gets sContext
     case context of
       ContextEmpty            -> return ()
       ContextSearch _ results -> viewSearchResults results
@@ -197,7 +200,6 @@ evaluate = \case
     viewSearchResults res
     State.modify' $ \s -> s{ sContext = ContextSearch str res }
   Select ix -> do
-    context <- State.gets sContext
     case context of
       ContextEmpty -> fail "no context"
       ContextSearch _ _ -> getTargetGroup ix (viewInTerminalPaged . viewFull)
@@ -240,25 +242,26 @@ evaluate = \case
     viewModuleDocs (parseModuleDocs url html)
   ViewSource ix ->
     getTarget ix viewSource
-  ViewPackageModules (Just (Left term)) -> do
+  ViewPackageModules (SelectSearch term) -> do
     let url = hooglePackageUrl term
     html <- fetch' url
     let package = parsePackageDocs url html
     viewPackageModules package
     State.modify' $ \s -> s{ sContext = ContextPackage package }
-  ViewPackageModules msearch -> do
-    context <- State.gets sContext
+  ViewPackageModules (SelectFromContext ix) ->
+    case context of
+      ContextSearch _ _ ->
+        getTarget ix $ \target -> do
+        let url = packageUrl $ moduleUrl target
+        html <- fetch' url
+        let package = parsePackageDocs url html
+        viewPackageModules package
+        State.modify' $ \s -> s{ sContext = ContextPackage package }
+      _ -> fail $ "no package for index " <> show ix
+  ViewPackageModules SelectDefault -> do
     package <- case context of
       ContextEmpty -> fail "no package to show"
-      ContextSearch _ _
-        | Just (Right ix) <- msearch ->
-          getTarget ix $ \target -> do
-          let url = packageUrl $ moduleUrl target
-          html <- fetch' url
-          let package = parsePackageDocs url html
-          viewPackageModules package
-          return package
-        | otherwise -> fail "no option selected"
+      ContextSearch _ _ -> fail "no index selected"
       ContextModule module' -> do
         let url = packageUrl $ mUrl module'
         html <- fetch' url
