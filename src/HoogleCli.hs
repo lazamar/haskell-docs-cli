@@ -223,7 +223,7 @@ evaluate = \case
         desc = case declUrl target of
           Nothing -> prettyHtml <$> mDescription modl
           Just (DeclUrl _ anchor) -> prettyDecl <$> lookupDecl anchor modl
-    viewInTerminal $ fromMaybe mempty desc
+    viewInTerminalPaged $ fromMaybe mempty desc
   ViewModuleInterface ix ->
     getTarget ix $ \target -> do
     let url = moduleUrl target
@@ -320,7 +320,7 @@ viewModuleDocs = viewInTerminalPaged . prettyModule
 
 viewPackageModules :: MonadIO m => Package -> m ()
 viewPackageModules (Package _ modules _) =
-  viewInTerminal $ P.vsep $ numbered (P.text <$> modules)
+  viewInTerminalPaged $ P.vsep $ numbered (P.text <$> modules)
 
 promptSelectOne :: TargetGroup -> M Hoogle.Target
 promptSelectOne tgroup =
