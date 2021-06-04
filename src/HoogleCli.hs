@@ -67,9 +67,8 @@ type Index = Int
 
 -- | Commands we accept
 data Cmd
-  = ViewContext                      -- ^ show data from current context
-  | Select Index                     -- ^ view item from context
-  | Search String                    -- ^ Hoogle search
+  = DefaultCmd Selection             -- ^ by default we do a Hoogle search or
+                                     -- view/index the current context
   | ViewSource Index                 -- ^ source for target
   | ViewExtendedDocs Index           -- ^ declaration's docs available in the haddock page
   | ViewModuleDocs (Maybe Index)     -- ^ full haddock for module
@@ -168,9 +167,9 @@ parseCommand str = case str of
 
         "quit" -> Right Quit
         _ -> error $ "Unknown command: " <> cmd
-  x | Just n <- readMaybe x -> Right (Select n)
-  [] -> Right ViewContext
-  _ -> Right $ Search str
+  x | Just n <- readMaybe x -> Right $ DefaultCmd $ SelectFromContext n
+  [] -> Right $ DefaultCmd SelectDefault
+  _ -> Right $ DefaultCmd $ SelectSearch str
 
 interactive :: M ()
 interactive = do
@@ -189,17 +188,17 @@ interactive = do
 evaluate :: Cmd -> M ()
 evaluate cmd = State.gets sContext >>= \context -> case cmd of
   Quit -> error "impossible"
-  ViewContext -> do
+  DefaultCmd SelectDefault -> do
     case context of
       ContextEmpty            -> return ()
       ContextSearch _ results -> viewSearchResults results
       ContextModule mdocs     -> viewModuleInterface mdocs
       ContextPackage package  -> viewPackageModules package
-  Search str -> do
+  DefaultCmd (SelectSearch str) -> do
     res <- toGroups <$> runSearch str
     viewSearchResults res
     State.modify' $ \s -> s{ sContext = ContextSearch str res }
-  Select ix -> do
+  DefaultCmd (SelectFromContext ix) -> do
     case context of
       ContextEmpty -> fail "no context"
       ContextSearch _ _ -> getTargetGroup ix (viewInTerminalPaged . viewFull)
