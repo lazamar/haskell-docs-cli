@@ -5,6 +5,7 @@
 module HoogleCli
   ( interactive
   , evaluate
+  , evaluateCmd
   , ShellState(..)
   , Context(..)
   , Cmd(..)
@@ -36,6 +37,7 @@ import Data.Map.Strict (Map)
 import System.Environment (getEnv)
 import System.IO (hClose, stdout, Handle)
 import System.IO.Temp (withSystemTempFile)
+import System.Exit (exitSuccess)
 import qualified Hoogle as H
 
 import HoogleCli.Types
@@ -249,17 +251,20 @@ interactive = do
     ContextModule m   -> liftIO $ putStrLn $ "module: " <> mTitle m
     ContextPackage p  -> liftIO $ putStrLn $ "package: " <> pTitle p
   minput <- getInputLine "hoogle> "
-  case parseCommand $ fromMaybe "" minput of
-    Left err   -> liftIO (putStrLn err) >> interactive
-    Right Quit -> return ()
-    Right cmd  -> do
-      let showFailure e = liftIO $ putStrLn $ "Failed: "<> e
-      evaluate cmd `catchError` showFailure
-      interactive
+  evaluate $ fromMaybe "" minput
+  interactive
 
-evaluate :: Cmd -> M ()
-evaluate cmd = State.gets sContext >>= \context -> case cmd of
-  Quit -> error "impossible"
+evaluate :: String -> M ()
+evaluate input =
+  case parseCommand input of
+    Left err   -> liftIO (putStrLn err)
+    Right cmd  -> evaluateCmd cmd `catchError` showFailure
+  where
+    showFailure e = liftIO $ putStrLn $ "Failed: "<> e
+
+evaluateCmd :: Cmd -> M ()
+evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
+  Quit -> liftIO exitSuccess
 
   -- pressed enter without typing anything
   ViewAny Interface SelectContext ->
