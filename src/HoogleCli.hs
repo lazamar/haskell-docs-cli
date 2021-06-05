@@ -318,8 +318,17 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
       ContextModule _   -> throwError "can only view source of declarations"
       ContextPackage _  -> throwError "can only view source of declarations"
 
-  ViewAny Source (Search term) -> undefined
-  ViewAny Source (ItemIndex term) -> undefined
+  -- :src <TERM>
+  ViewAny Source (Search term) ->
+    withFirstSearchResult "module" isDecl term viewSource
+
+  -- :src <INDEX>
+  ViewAny Source (ItemIndex ix) ->
+    case context of
+      ContextEmpty            -> throwError "empty context"
+      ContextSearch _ results -> withTargetGroup ix results $ viewSource . NonEmpty.head
+      ContextModule _         -> throwError "can only view source of declarations"
+      ContextPackage _        -> throwError "can only view source of declarations"
 
   ViewExtendedDocs ix ->
     getTargetGroup' ix $ \tgroup -> do
@@ -605,6 +614,9 @@ fetch req = do
 
 isModule :: Hoogle.Target -> Bool
 isModule target = TModule == targetType target
+
+isDecl :: Hoogle.Target -> Bool
+isDecl target = TDeclaration == targetType target
 
 data TargetType = TModule | TPackage | TDeclaration
   deriving (Show, Eq)
