@@ -302,20 +302,25 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
   -- :documentation <INDEX>
   ViewAny Documentation (ItemIndex ix) ->
     case context of
-      ContextEmpty            -> errEmptyContext
+      ContextEmpty ->
+        errEmptyContext
       ContextSearch _ results ->
         withTargetGroup ix results $ \tgroup -> do
         let target = NonEmpty.head tgroup
         case targetType target of
-          TModule      -> withModuleForTarget target viewModuleDocs
-          TPackage     -> withPackageForTarget target viewPackageDocs
+          TModule ->
+            withModuleForTarget target viewModuleDocs
+          TPackage ->
+            withPackageForTarget target viewPackageDocs
           TDeclaration ->
             withModuleForTarget target $ \mod ->
             viewInTerminalPaged $ case targetDeclaration target mod of
               Just decl -> prettyDecl decl
               Nothing -> viewItem target
-      ContextModule mod      -> withDeclFromModule ix mod viewDeclaration
-      ContextPackage package -> withModuleFromPackage ix package viewModuleDocs
+      ContextModule mod ->
+        withDeclFromModule ix mod viewDeclaration
+      ContextPackage package ->
+        withModuleFromPackage ix package viewModuleDocs
 
   -- :src
   ViewSource SelectContext ->
@@ -338,35 +343,33 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
       ContextPackage _        -> errSourceOnlyForDeclarations
 
   -- :minterface
-  ViewModule Interface SelectContext ->
+  -- :mdocumentation
+  ViewModule view SelectContext ->
     case context of
-      ContextModule mod -> viewModuleInterface mod
+      ContextModule mod -> viewModule view mod
       _                 -> throwError "not in a module context"
 
   -- :minterface <TERM>
-  ViewModule Interface (Search term) ->
+  -- :mdocumentation <TERM>
+  ViewModule view (Search term) ->
     withFirstSearchResult "module" isModule term $ \target ->
     withModuleForTarget target $ \mod ->
-    viewModuleInterface mod
+    viewModule view mod
 
   -- :minterface <INDEX>
-  ViewModule Interface (ItemIndex ix) ->
+  -- :mdocumentation <INDEX>
+  ViewModule view (ItemIndex ix) ->
     case context of
-      ContextEmpty            -> errEmptyContext
+      ContextEmpty ->
+        errEmptyContext
       ContextSearch _ results ->
         withTarget ix results $ \target ->
         withModuleForTarget target $ \mod ->
-        viewModuleInterface mod
-      ContextModule mod       -> viewModuleInterface mod
-      ContextPackage package  ->
-        withModuleFromPackage ix package viewModuleInterface
-
-  ViewModule Documentation (Search term) ->
-    case context of
-      ContextModule mod -> viewModuleInterface mod
-      _                 -> throwError "not in a module context"
-
-  ViewModule Documentation _ -> errSourceOnlyForDeclarations
+        viewModule view mod
+      ContextModule mod ->
+        viewModule view mod
+      ContextPackage package ->
+        withModuleFromPackage ix package (viewModule view)
 
   ViewExtendedDocs ix ->
     getTargetGroup' ix $ \tgroup -> do
@@ -536,6 +539,10 @@ viewSearchResults
 viewDeclaration :: MonadIO m => Declaration -> m ()
 viewDeclaration = viewInTerminalPaged . prettyDecl
 
+viewModule :: MonadIO m => View -> Module -> m ()
+viewModule Interface = viewModuleInterface
+viewModule Documentation = viewModuleDocs
+
 viewModuleInterface :: MonadIO m => Module -> m ()
 viewModuleInterface
   = viewInTerminalPaged
@@ -546,6 +553,10 @@ viewModuleInterface
 
 viewModuleDocs :: MonadIO m => Module -> m ()
 viewModuleDocs = viewInTerminalPaged . prettyModule
+
+viewPackage :: MonadIO m => View -> Package -> m ()
+viewPackage Interface = viewPackageInterface
+viewPackage Documentation = viewPackageDocs
 
 viewPackageInterface :: MonadIO m => Package -> m ()
 viewPackageInterface (Package _ modules _) =
