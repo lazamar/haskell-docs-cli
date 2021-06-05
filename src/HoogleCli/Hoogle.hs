@@ -4,6 +4,7 @@ module HoogleCli.Hoogle where
 
 import Prelude hiding (mod)
 import Data.Maybe (fromMaybe)
+import Data.Aeson (FromJSON(..))
 
 import HoogleCli.Types
 import HoogleCli.Haddock (Html, parseHoogleHtml)
@@ -13,6 +14,10 @@ data Item
   = Declaration Declaration
   | Module Module
   | Package Package
+  deriving (Eq)
+
+instance FromJSON Item where
+  parseJSON = fmap fromHoogleTarget . parseJSON
 
 fromHoogleTarget :: Hoogle.Target -> Item
 fromHoogleTarget target =
@@ -29,12 +34,14 @@ fromHoogleTarget target =
         , mPackage     = pkg
         , mDescription = parseHoogleHtml $ Hoogle.targetItem target
         , mDocs        = parseHoogleHtml $ Hoogle.targetDocs target
+        , mTarget      = target
         }
     "package" ->
       Package $ Package_
         { pUrl         = PackageUrl $ Hoogle.targetURL target
         , pDescription = parseHoogleHtml $ Hoogle.targetItem target
         , pDocs        = parseHoogleHtml $ Hoogle.targetDocs target
+        , pTarget      = target
         }
     _ ->
       let
@@ -60,6 +67,7 @@ fromHoogleTarget target =
         , dModuleUrl   = moduleUrl
         , dDescription = parseHoogleHtml $ Hoogle.targetItem target
         , dDocs        = parseHoogleHtml $ Hoogle.targetDocs target
+        , dTarget      = target
         }
 
 data Declaration = Declaration_
@@ -70,7 +78,9 @@ data Declaration = Declaration_
   , dModuleUrl   :: ModuleUrl
   , dDescription :: Html
   , dDocs        :: Html
+  , dTarget      :: Hoogle.Target
   }
+  deriving (Eq)
 
 data Module = Module_
   { mUrl         :: ModuleUrl
@@ -78,11 +88,26 @@ data Module = Module_
   , mPackageUrl  :: PackageUrl
   , mDescription :: Html
   , mDocs        :: Html
+  , mTarget      :: Hoogle.Target
   }
+  deriving (Eq)
 
 data Package = Package_
   { pUrl         :: PackageUrl
   , pDescription :: Html
   , pDocs        :: Html
+  , pTarget      :: Hoogle.Target
   }
+  deriving (Eq)
 
+description :: Item -> Html
+description = \case
+  Declaration d -> dDescription d
+  Module      m -> mDescription m
+  Package     p -> pDescription p
+
+docs :: Item -> Html
+docs = \case
+  Declaration d -> dDocs d
+  Module      m -> mDocs m
+  Package     p -> pDocs p

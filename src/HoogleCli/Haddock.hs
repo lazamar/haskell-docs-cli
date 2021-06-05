@@ -1,4 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE GeneralisedNewtypeDeriving #-}
+{-# LANGUAGE DerivingStrategies #-}
 
 -- | Functions to parse and display Haddock HTML
 module HoogleCli.Haddock
@@ -44,6 +46,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen.Internal as P
 
 -- | An html element
 newtype Html = Html Xml.Element
+  deriving newtype (Show, Eq)
 
 -- | The root of an html page
 newtype HtmlPage = HtmlPage Xml.Element

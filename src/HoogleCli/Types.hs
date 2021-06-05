@@ -1,10 +1,8 @@
 module HoogleCli.Types where
 
 import Data.Text (Text)
-import Data.List.NonEmpty (NonEmpty)
 
 import qualified Data.Text as Text
-import qualified Hoogle
 
 type Url = String
 
@@ -22,21 +20,19 @@ takeAnchor url = case drop 1 $ dropWhile (/= '#') url of
   [] -> fail "no anchor"
   xs -> return $ Text.pack xs
 
-type TargetGroup = NonEmpty Hoogle.Target
-
 data DeclUrl = DeclUrl ModuleUrl Anchor
-  deriving Show
+  deriving (Eq, Show)
 
 -- | Link to an item in a src page
 data SourceLink = SourceLink Url Anchor
-  deriving (Show)
+  deriving (Eq, Show)
 
 newtype ModuleUrl = ModuleUrl Url
-  deriving (Show)
+  deriving (Eq, Show)
 
 -- | Url to a Haddock package page
 newtype PackageUrl = PackageUrl Url
-  deriving (Show)
+  deriving (Eq, Show)
 
 type FileName = String
 

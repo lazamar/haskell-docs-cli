@@ -36,9 +36,11 @@ import Data.Map.Strict (Map)
 import System.Environment (getEnv)
 import System.IO (hClose, stdout, Handle)
 import System.IO.Temp (withSystemTempFile)
+import qualified Hoogle as H
 
 import HoogleCli.Types
 import HoogleCli.Haddock as Haddock
+import qualified HoogleCli.Hoogle as Hoogle
 
 import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Monad.State.Lazy as State
@@ -50,7 +52,6 @@ import qualified Data.Set as Set
 import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import qualified Data.Text.IO as Text (hPutStr)
-import qualified Hoogle
 import qualified Network.HTTP.Client as Http
 import qualified System.Console.Haskeline as CLI
 import qualified System.Process as Process
@@ -64,12 +65,14 @@ data ShellState = ShellState
   , sCache :: Map Url (MVar ByteString)
   }
 
+type TargetGroup = NonEmpty.NonEmpty Hoogle.Item
+
 -- | Context referenced by commands that contain an index
 data Context
   = ContextEmpty                        -- ^ Nothing selected
   | ContextSearch String [TargetGroup]  -- ^ within search results
-  | ContextModule Module                -- ^ looking at module docs
-  | ContextPackage Package              -- ^ looking at a a package's modules
+  | ContextModule Haddock.Module        -- ^ looking at module docs
+  | ContextPackage Haddock.Package      -- ^ looking at a a package's modules
 
 type Index = Int
 
@@ -122,7 +125,7 @@ class MonadCLI m where
 instance MonadCLI M where
   getInputLine str = M $ lift $ lift $ CLI.getInputLine str
 
-runSearch :: String -> M [Hoogle.Target]
+runSearch :: String -> M [Hoogle.Item]
 runSearch term = do
   req <- Http.parseRequest "https://hoogle.haskell.org"
     <&> Http.setQueryString
@@ -134,37 +137,40 @@ runSearch term = do
   either error return $ Aeson.eitherDecode res
 
 withFirstSearchResult
-  :: String
-  -> (Hoogle.Target -> Bool)
+  :: (String, Hoogle.Item -> Maybe x)
   -> String
-  -> (Hoogle.Target -> M a)
+  -> (x -> M a)
   -> M a
-withFirstSearchResult name valid term act = do
-  res <- toGroups <$> runSearch term
-  firstResult <- case NonEmpty.head <$> listToMaybe res of
-    Nothing -> throwError $ "No results found for '" <> term <> "'"
-    Just x -> return x
+withFirstSearchResult (name, get) term act = do
+  allResults <- runSearch term
+  let res = toGroups allResults
   State.modify' (\s -> s{ sContext = ContextSearch term res })
-  if valid firstResult
-    then act firstResult
-    else do
+  case listToMaybe (mapMaybe get allResults) of
+    Just firstValid ->
+      act firstValid
+    Nothing -> do
       viewSearchResults res
-      throwError $ "First search result is not a " <> name
+      throwError $ "No " <> name <> " results found for '" <> term <> "'"
 
 hooglePackageUrl :: String -> PackageUrl
 hooglePackageUrl pname =
   PackageUrl $ "https://hackage.haskell.org/package/" ++ pname
 
-toGroups :: [Hoogle.Target] -> [TargetGroup]
+toGroups :: [Hoogle.Item] -> [TargetGroup]
 toGroups
   = mapMaybe NonEmpty.nonEmpty
   . groupBy relevantFields
   where
-    relevantFields target = target
-      { Hoogle.targetURL = ""
-      , Hoogle.targetPackage = Nothing
-      , Hoogle.targetModule = Nothing
+    relevantFields item = target
+      { H.targetURL = ""
+      , H.targetPackage = Nothing
+      , H.targetModule = Nothing
       }
+      where
+        target = case item of
+            Hoogle.Declaration x -> Hoogle.dTarget x
+            Hoogle.Module x      -> Hoogle.mTarget x
+            Hoogle.Package x     -> Hoogle.pTarget x
 
 groupBy :: Ord b => (a -> b) -> [a] -> [[a]]
 groupBy f vs = go mempty vs
@@ -295,8 +301,8 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
 
   -- :documentation <TERM>
   ViewAny Documentation (Search term) ->
-    withFirstSearchResult "module" isModule term
-      $ flip withModuleForTarget viewModuleDocs
+    withFirstSearchResult moduleResult term $ \hmod ->
+    withModuleForItem (Hoogle.Module hmod) viewModuleDocs
 
   -- :documentation <INDEX>
   ViewAny Documentation (ItemIndex ix) ->
@@ -305,17 +311,17 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
         errEmptyContext
       ContextSearch _ results ->
         withTargetGroup ix results $ \tgroup -> do
-        let target = NonEmpty.head tgroup
-        case targetType target of
-          TModule ->
-            withModuleForTarget target viewModuleDocs
-          TPackage ->
-            withPackageForTarget target viewPackageDocs
-          TDeclaration ->
-            withModuleForTarget target $ \mod ->
-            viewInTerminalPaged $ case targetDeclaration target mod of
+        let item = NonEmpty.head tgroup
+        case item of
+          Hoogle.Module _ ->
+            withModuleForItem item viewModuleDocs
+          Hoogle.Package _ ->
+            withPackageForItem item viewPackageDocs
+          Hoogle.Declaration d ->
+            withModuleForItem item $ \mod ->
+            viewInTerminalPaged $ case targetDeclaration d mod of
               Just decl -> prettyDecl decl
-              Nothing -> viewItem target
+              Nothing   -> viewDescription item
       ContextModule mod ->
         withDeclFromModule ix mod viewDeclaration
       ContextPackage package ->
@@ -327,8 +333,7 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
 
   -- :src <TERM>
   ViewSource (Search term) ->
-    withFirstSearchResult "declaration" isDecl term
-        (maybe errNoSourceAvailable viewSource . targetDeclUrl)
+    withFirstSearchResult declResult term (viewSource . Hoogle.dUrl)
 
   -- :src <INDEX>
   ViewSource (ItemIndex ix) ->
@@ -337,7 +342,7 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
         errEmptyContext
       ContextSearch _ results ->
         withTargetGroup ix results
-          (maybe errNoSourceAvailable viewSource . targetDeclUrl . NonEmpty.head)
+          (maybe errNoSourceAvailable (viewSource . Hoogle.dUrl) . toDecl . NonEmpty.head)
       ContextModule mod ->
         withDeclFromModule ix mod (viewSource . declUrl)
       ContextPackage _ ->
@@ -349,8 +354,8 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
 
   -- :declaration <TERM>
   ViewDeclaration (Search term) ->
-    withFirstSearchResult "declaration" isDecl term $ \target ->
-    viewInTerminalPaged $ viewItem target
+    withFirstSearchResult declResult term $ \hdecl ->
+    viewInTerminalPaged $ viewDescription (Hoogle.Declaration hdecl)
 
   -- :declaration <INDEX>
   ViewDeclaration (ItemIndex ix) ->
@@ -359,7 +364,7 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
         errEmptyContext
       ContextSearch _ results ->
         withTargetGroup ix results $ \tgroup ->
-        viewInTerminalPaged $ viewItem $ NonEmpty.head tgroup
+        viewInTerminalPaged $ viewDescription $ NonEmpty.head tgroup
       ContextModule mod ->
         withDeclFromModule ix mod viewDeclaration
       ContextPackage _ ->
@@ -375,8 +380,8 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
   -- :minterface <TERM>
   -- :mdocumentation <TERM>
   ViewModule view (Search term) ->
-    withFirstSearchResult "module" isModule term $ \target ->
-    withModuleForTarget target $ \mod ->
+    withFirstSearchResult moduleResult term $ \hmod ->
+    withModuleForItem (Hoogle.Module hmod) $ \mod ->
     viewModule view mod
 
   -- :minterface <INDEX>
@@ -386,8 +391,8 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
       ContextEmpty ->
         errEmptyContext
       ContextSearch _ results ->
-        withTarget ix results $ \target ->
-        withModuleForTarget target $ \mod ->
+        withItem ix results $ \item ->
+        withModuleForItem item $ \mod ->
         viewModule view mod
       ContextModule mod ->
         viewModule view mod
@@ -417,8 +422,8 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
       ContextEmpty ->
         errEmptyContext
       ContextSearch _ results ->
-        withTarget ix results $ \target ->
-        withPackageForTarget target $ \package ->
+        withItem ix results $ \target ->
+        withPackageForItem target $ \package ->
         viewPackage view package
       ContextModule mod ->
         withPackageForModule mod (viewPackage view)
@@ -438,27 +443,31 @@ errNoSourceAvailable :: M a
 errNoSourceAvailable =
  throwError "no source available for that declaration"
 
-targetDeclaration :: Hoogle.Target -> Module -> Maybe Declaration
-targetDeclaration target mod = do
-  DeclUrl _ anchor <- targetDeclUrl target
-  lookupDecl anchor mod
+targetDeclaration :: Hoogle.Declaration -> Module -> Maybe Declaration
+targetDeclaration decl mod = lookupDecl anchor mod
+  where
+    DeclUrl _ anchor = Hoogle.dUrl decl
 
--- TODO: handle if target is a package
-withModuleForTarget
-  :: Hoogle.Target
+withModuleForItem
+  :: Hoogle.Item
   -> (Module -> M ())
   -> M ()
-withModuleForTarget target act = do
-  let url = moduleUrl target
+withModuleForItem item act = do
+  url <- case item of
+    Hoogle.Declaration d -> return $ Hoogle.dModuleUrl d
+    Hoogle.Module      m -> return $ Hoogle.mUrl m
+    Hoogle.Package     _ -> throwError "no module specified for package"
   html <- fetch' url
   let mod = parseModuleDocs url html
   State.modify' $ \s -> s{ sContext = ContextModule mod }
   act mod
 
-withPackageForTarget :: Hoogle.Target -> (Package -> M a) -> M a
-withPackageForTarget target act = do
-  -- TODO handle different types of target
-  let url = packageUrl $ moduleUrl target
+withPackageForItem :: Hoogle.Item -> (Package -> M a) -> M a
+withPackageForItem item act = do
+  let url = case item of
+        Hoogle.Declaration d -> Hoogle.dPackageUrl d
+        Hoogle.Module      m -> Hoogle.mPackageUrl m
+        Hoogle.Package     p -> Hoogle.pUrl p
   html <- fetch' url
   let package = parsePackageDocs url html
   State.modify' $ \s -> s{ sContext = ContextPackage package }
@@ -479,8 +488,8 @@ elemAt ix =
   . listToMaybe
   . drop (ix - 1)
 
-withTarget :: Int -> [TargetGroup] -> (Hoogle.Target -> M a) -> M a
-withTarget ix results act = do
+withItem :: Int -> [TargetGroup] -> (Hoogle.Item -> M a) -> M a
+withItem ix results act = do
   tgroup <- elemAt ix results
   target <- promptSelectOne tgroup
   act target
@@ -540,10 +549,10 @@ viewPackageInterface (Package _ modules _) =
 viewPackageDocs :: MonadIO m => Package -> m ()
 viewPackageDocs = error "TODO"
 
-promptSelectOne :: TargetGroup -> M Hoogle.Target
+promptSelectOne :: TargetGroup -> M Hoogle.Item
 promptSelectOne tgroup =
   case toList tgroup of
-    [target] -> return target
+    [item] -> return item
     targets -> do
       liftIO $ do
         putStrLn "Select one:"
@@ -555,7 +564,7 @@ promptSelectOne tgroup =
       num <- getInputLine ": "
       case readMaybe =<< num of
         Just n -> case listToMaybe $ drop (n - 1) targets of
-          Just target -> return target
+          Just item -> return item
           Nothing -> do
             liftIO $ putStrLn "Invalid index"
             promptSelectOne tgroup
@@ -639,35 +648,34 @@ fetch req = do
         MVar.putMVar mvar res
         return res
 
-isDecl :: Hoogle.Target -> Bool
-isDecl target = TDeclaration == targetType target
+moduleResult :: (String, Hoogle.Item -> Maybe Hoogle.Module)
+moduleResult = ("module", toModule)
+  where
+    toModule = \case
+      Hoogle.Module m -> Just m
+      _               -> Nothing
 
-isModule :: Hoogle.Target -> Bool
-isModule target = TModule == targetType target
+declResult :: (String, Hoogle.Item -> Maybe Hoogle.Declaration)
+declResult = ("declaration", toDecl)
 
-data TargetType = TModule | TPackage | TDeclaration
-  deriving (Show, Eq)
-
-targetType :: Hoogle.Target -> TargetType
-targetType target =
-  case Hoogle.targetType target of
-    "module" -> TModule
-    "package" -> TPackage
-    _ -> TDeclaration
+toDecl :: Hoogle.Item -> Maybe Hoogle.Declaration
+toDecl = \case
+  Hoogle.Declaration d -> Just d
+  _                    -> Nothing
 
 -- ================================
 -- Pretty printing
 -- ================================
 
 -- TODO rename to view declaration and use declaration type
--- TODO I'm using viewItem in a lot of places where I want
+-- TODO I'm using viewDescription in a lot of places where I want
 -- to see the docs and not the interface
-viewItem :: Hoogle.Target -> P.Doc
-viewItem = prettyHtml . parseHoogleHtml . Hoogle.targetItem
+viewDescription :: Hoogle.Item -> P.Doc
+viewDescription = prettyHtml . Hoogle.description
 
 viewSummary :: TargetGroup -> P.Doc
 viewSummary tgroup = P.vsep
-  [ viewItem $ NonEmpty.head tgroup
+  [ viewDescription $ NonEmpty.head tgroup
   , viewPackageInfoList tgroup
   ]
 
@@ -679,11 +687,17 @@ viewPackageInfoList
   . mapMaybe viewPackageAndModule
   . toList
 
-viewPackageAndModule :: Hoogle.Target -> Maybe P.Doc
-viewPackageAndModule target = do
-  pkg <- P.magenta . P.text . fst <$> Hoogle.targetModule target
-  mol <- P.black . P.text . fst <$> Hoogle.targetPackage target
-  return $ pkg P.<+> mol
+viewPackageAndModule :: Hoogle.Item -> Maybe P.Doc
+viewPackageAndModule = \case
+  Hoogle.Declaration d ->
+    Just $ prettyP (Hoogle.dPackage d) P.<+> prettyM (Hoogle.dModule d)
+  Hoogle.Module m ->
+    Just $ prettyP (Hoogle.mPackage m)
+  Hoogle.Package _ ->
+    Nothing
+  where
+    prettyP = P.magenta . P.text
+    prettyM = P.black . P.text
 
 prettyModule :: Module -> P.Doc
 prettyModule (Module name minfo decls _) =
@@ -714,11 +728,15 @@ viewFull tgroup = P.vsep
   where
     divider = P.black $ P.text $ replicate 50 '='
     representative = NonEmpty.head tgroup
+    toUrl = \case
+      Hoogle.Declaration d -> getUrl $ Hoogle.dUrl d
+      Hoogle.Module      m -> getUrl $ Hoogle.mUrl m
+      Hoogle.Package     p -> getUrl $ Hoogle.pUrl p
     content = P.vsep $
-      [ viewItem representative
+      [ viewDescription representative
       , viewPackageInfoList tgroup
-      , prettyHtml $ parseHoogleHtml $ Hoogle.targetDocs representative
-      ] ++ reverse (P.cyan . P.text . Hoogle.targetURL <$> toList tgroup)
+      , prettyHtml $ Hoogle.docs representative
+      ] ++ reverse (P.cyan . P.text . toUrl <$> toList tgroup)
 
 -- ================================
 -- Hoogle handling
@@ -736,21 +754,8 @@ sourceLink (DeclUrl murl anchor) = do
       ] ++ map show links
     Just link -> return link
 
--- | Get URL for module documentation
-moduleUrl :: Hoogle.Target -> ModuleUrl
-moduleUrl target = ModuleUrl (dropAnchor url)
-  where
-    url = Hoogle.targetURL target
-
 declUrl :: Declaration -> DeclUrl
 declUrl Declaration{..} =  DeclUrl dModuleUrl dAnchor
-
-targetDeclUrl :: Hoogle.Target -> Maybe DeclUrl
-targetDeclUrl target = do
-  anchor <- takeAnchor url
-  return $ DeclUrl (moduleUrl target) anchor
-  where
-    url = Hoogle.targetURL target
 
 packageUrl :: ModuleUrl -> PackageUrl
 packageUrl (ModuleUrl url) = PackageUrl $ fst $ breakOn "docs" url
