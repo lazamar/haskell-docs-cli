@@ -78,6 +78,7 @@ data Cmd
   = ViewAny View Selection           -- ^ by default we do a Hoogle search or
                                      -- view/index the current context
   | ViewSource Selection             -- ^ source for target
+  | ViewDeclaration Selection
   | ViewModule View Selection
   | ViewPackage View Selection
   | ViewExtendedDocs Index           -- ^ declaration's docs available in the haddock page
@@ -193,6 +194,8 @@ commands =
   , "interface"
   , "src"
 
+  , "declaration"
+
   , "module"
   , "minterface"
   , "mdocumentation"
@@ -227,6 +230,9 @@ parseCommand str = case str of
         "documentation" -> Right $ ViewAny Documentation selection
         "interface"     -> Right $ ViewAny Interface selection
         "src"           -> Right $ ViewSource selection
+
+        -- declaration
+        "declaration"   -> Right $ ViewDeclaration selection
 
         -- module
         "module"         -> Right $ ViewModule Interface selection
@@ -347,13 +353,37 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
   -- :src <INDEX>
   ViewSource (ItemIndex ix) ->
     case context of
-      ContextEmpty            -> errEmptyContext
+      ContextEmpty ->
+        errEmptyContext
       ContextSearch _ results ->
         withTargetGroup ix results
           (maybe errNoSourceAvailable viewSource . targetDeclUrl . NonEmpty.head)
-      ContextModule mod       ->
+      ContextModule mod ->
         withDeclFromModule ix mod (viewSource . declUrl)
-      ContextPackage _        -> errSourceOnlyForDeclarations
+      ContextPackage _ ->
+        errSourceOnlyForDeclarations
+
+  -- :declaration
+  ViewDeclaration SelectContext ->
+    throwError "no declaration selected."
+
+  -- :declaration <TERM>
+  ViewDeclaration (Search term) ->
+    withFirstSearchResult "declaration" isDecl term $ \target ->
+    viewInTerminalPaged $ viewItem target
+
+  -- :declaration <INDEX>
+  ViewDeclaration (ItemIndex ix) ->
+    case context of
+      ContextEmpty ->
+        errEmptyContext
+      ContextSearch _ results ->
+        withTargetGroup ix results $ \tgroup ->
+        viewInTerminalPaged $ viewItem $ NonEmpty.head tgroup
+      ContextModule mod ->
+        withDeclFromModule ix mod viewDeclaration
+      ContextPackage _ ->
+        throwError "item at index is not a declaration; it is a module."
 
   -- :minterface
   -- :mdocumentation
