@@ -79,6 +79,7 @@ data Cmd
                                      -- view/index the current context
   | ViewSource Selection             -- ^ source for target
   | ViewModule View Selection
+  | ViewPackage View Selection
   | ViewExtendedDocs Index           -- ^ declaration's docs available in the haddock page
   | ViewModuleDocs Selection         -- ^ full haddock for module
   | ViewModuleInterface Selection    -- ^ all function signatures
@@ -189,12 +190,18 @@ groupBy f vs = go mempty vs
 commands :: [String]
 commands =
   [ "documentation"
-  , "src"
-  , "quit"
-  , "module-doc"
-  , "edoc"
   , "interface"
+  , "src"
+
+  , "module"
+  , "minterface"
+  , "mdocumentation"
+
   , "package"
+  , "pinterface"
+  , "pdocumentation"
+
+  , "quit"
   ]
 
 fillPrefix :: String -> Maybe String
@@ -225,6 +232,11 @@ parseCommand str = case str of
         "module"         -> Right $ ViewModule Interface selection
         "mdocumentation" -> Right $ ViewModule Documentation selection
         "minterface"     -> Right $ ViewModule Interface selection
+
+        -- package
+        "package"        -> Right $ ViewPackage Interface selection
+        "pdocumentation" -> Right $ ViewPackage Documentation selection
+        "pinterface"     -> Right $ ViewPackage Interface selection
 
         "module-doc"    -> Right $ ViewModuleDocs selection
         "edoc"          -> intCmd ViewExtendedDocs
@@ -271,6 +283,7 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
     viewSearchResults res
     State.modify' $ \s -> s{ sContext = ContextSearch term res }
 
+  -- <INDEX>
   ViewAny Interface (ItemIndex ix) ->
     case context of
       ContextEmpty -> errEmptyContext
@@ -371,6 +384,35 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
       ContextPackage package ->
         withModuleFromPackage ix package (viewModule view)
 
+  -- :pinterface
+  -- :pdocumentation
+  ViewPackage view SelectContext ->
+    case context of
+      ContextPackage package -> viewPackage view package
+      _                      -> throwError "not in a package context"
+
+  -- :pinterface <TERM>
+  -- :pdocumentation <TERM>
+  ViewPackage view (Search term) ->
+    withFirstSearchResult "package" isPackage term $ \target ->
+    withPackageForTarget target $ \package ->
+    viewPackage view package
+
+  -- :pinterface <INDEX>
+  -- :pdocumentation <INDEX>
+  ViewPackage view (ItemIndex ix) ->
+    case context of
+      ContextEmpty ->
+        errEmptyContext
+      ContextSearch _ results ->
+        withTarget ix results $ \target ->
+        withPackageForTarget target $ \package ->
+        viewPackage view package
+      ContextModule mod ->
+        withPackageForModule mod (viewPackage view)
+      ContextPackage package ->
+        viewPackage view package
+
   ViewExtendedDocs ix ->
     getTargetGroup' ix $ \tgroup -> do
     let target = NonEmpty.head tgroup
@@ -469,9 +511,18 @@ withModuleForTarget target act = do
   State.modify' $ \s -> s{ sContext = ContextModule mod }
   act mod
 
--- TODO
-withPackageForTarget :: Hoogle.Target -> (Package -> M ()) -> M ()
+-- TODO set ContextPackage
+withPackageForTarget :: Hoogle.Target -> (Package -> M a) -> M a
 withPackageForTarget = error "TODO"
+
+-- TODO set ContextPackage
+withPackageForModule :: Module -> (Package -> M a) -> M a
+withPackageForModule mod act = do
+  let url = packageUrl $ mUrl mod
+  html <- fetch' url
+  let package = parsePackageDocs url html
+  State.modify' $ \s -> s{ sContext = ContextPackage package }
+  act package
 
 -- | Get an element from a one-indexed index
 elemAt :: Int -> [a] -> M a
@@ -664,11 +715,14 @@ fetch req = do
         MVar.putMVar mvar res
         return res
 
+isDecl :: Hoogle.Target -> Bool
+isDecl target = TDeclaration == targetType target
+
 isModule :: Hoogle.Target -> Bool
 isModule target = TModule == targetType target
 
-isDecl :: Hoogle.Target -> Bool
-isDecl target = TDeclaration == targetType target
+isPackage :: Hoogle.Target -> Bool
+isPackage target = TPackage == targetType target
 
 data TargetType = TModule | TPackage | TDeclaration
   deriving (Show, Eq)
