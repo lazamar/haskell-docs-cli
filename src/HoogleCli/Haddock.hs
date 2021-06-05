@@ -23,7 +23,7 @@ import HoogleCli.Types
 import Data.List.Extra (unescapeHTML)
 import Data.Foldable (fold)
 import Control.Monad (foldM)
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe, listToMaybe)
 import Data.List hiding (groupBy)
 import Data.Maybe (isJust)
 import Data.Char (isSpace)
@@ -51,6 +51,7 @@ newtype HtmlPage = HtmlPage Xml.Element
 -- | An exported declaration
 data Declaration = Declaration
   { dAnchors :: Set Anchor
+  , dAnchor :: Anchor -- ^ Main declaration anchor
   , dSignature :: Html
   , dContent :: [Html]
   , dModuleUrl :: ModuleUrl
@@ -110,6 +111,9 @@ parseDeclaration moduleUrl (Html el) = do
 
   return Declaration
     { dAnchors = Set.fromList $ anchors el
+    , dAnchor = case listToMaybe $ anchors sig of
+        Nothing -> error "declaration with no anchor in signature"
+        Just a  -> a
     , dSignature = Html $ asTag "div" sig
     , dContent = Html <$> content
     , dModuleUrl = moduleUrl

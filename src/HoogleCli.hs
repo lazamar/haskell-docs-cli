@@ -77,7 +77,8 @@ type Index = Int
 data Cmd
   = ViewAny View Selection           -- ^ by default we do a Hoogle search or
                                      -- view/index the current context
-  | ViewSource Index                 -- ^ source for target
+  | ViewSource Selection             -- ^ source for target
+  | ViewModule View Selection
   | ViewExtendedDocs Index           -- ^ declaration's docs available in the haddock page
   | ViewModuleDocs Selection         -- ^ full haddock for module
   | ViewModuleInterface Selection    -- ^ all function signatures
@@ -96,10 +97,7 @@ data Selection
   | ItemIndex Index
   | SelectContext
 
-data View
-  = Documentation
-  | Interface
-  | Source
+data View =  Interface | Documentation
 
 newtype M a = M { runM :: ExceptT String (StateT ShellState (CLI.InputT IO)) a }
   deriving newtype
@@ -218,9 +216,16 @@ parseCommand str = case str of
           | otherwise                = Search args
 
     case cmd of
+        -- any
         "documentation" -> Right $ ViewAny Documentation selection
         "interface"     -> Right $ ViewAny Interface selection
-        "src"           -> Right $ ViewAny Source selection
+        "src"           -> Right $ ViewSource selection
+
+        -- module
+        "module"         -> Right $ ViewModule Interface selection
+        "mdocumentation" -> Right $ ViewModule Documentation selection
+        "minterface"     -> Right $ ViewModule Interface selection
+
         "module-doc"    -> Right $ ViewModuleDocs selection
         "edoc"          -> intCmd ViewExtendedDocs
         "package"       -> Right $ ViewPackageModules selection
@@ -268,7 +273,7 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
 
   ViewAny Interface (ItemIndex ix) ->
     case context of
-      ContextEmpty -> throwError "no context"
+      ContextEmpty -> errEmptyContext
       ContextSearch _ results ->
         withTargetGroup ix results $ viewInTerminalPaged . viewFull
       ContextModule mod -> do
@@ -284,7 +289,7 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
   -- :documentation
   ViewAny Documentation SelectContext ->
     case context of
-      ContextEmpty            -> throwError "empty context"
+      ContextEmpty            -> errEmptyContext
       ContextSearch _ results -> viewSearchResults results
       ContextModule mod       -> viewModuleDocs mod
       ContextPackage package  -> viewPackageDocs package
@@ -297,7 +302,7 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
   -- :documentation <INDEX>
   ViewAny Documentation (ItemIndex ix) ->
     case context of
-      ContextEmpty            -> throwError "empty context"
+      ContextEmpty            -> errEmptyContext
       ContextSearch _ results ->
         withTargetGroup ix results $ \tgroup -> do
         let target = NonEmpty.head tgroup
@@ -313,24 +318,55 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
       ContextPackage package -> withModuleFromPackage ix package viewModuleDocs
 
   -- :src
-  ViewAny Source SelectContext ->
-    case context of
-      ContextEmpty      -> throwError "empty context"
-      ContextSearch _ _ -> throwError "no declaration selected. Use ':src INT'"
-      ContextModule _   -> throwError "can only view source of declarations"
-      ContextPackage _  -> throwError "can only view source of declarations"
+  ViewSource SelectContext ->
+    throwError "no declaration selected. Use ':src INT'"
 
   -- :src <TERM>
-  ViewAny Source (Search term) ->
-    withFirstSearchResult "module" isDecl term viewSource
+  ViewSource (Search term) ->
+    withFirstSearchResult "declaration" isDecl term
+        (maybe errNoSourceAvailable viewSource . targetDeclUrl)
 
   -- :src <INDEX>
-  ViewAny Source (ItemIndex ix) ->
+  ViewSource (ItemIndex ix) ->
     case context of
-      ContextEmpty            -> throwError "empty context"
-      ContextSearch _ results -> withTargetGroup ix results $ viewSource . NonEmpty.head
-      ContextModule _         -> throwError "can only view source of declarations"
-      ContextPackage _        -> throwError "can only view source of declarations"
+      ContextEmpty            -> errEmptyContext
+      ContextSearch _ results ->
+        withTargetGroup ix results
+          (maybe errNoSourceAvailable viewSource . targetDeclUrl . NonEmpty.head)
+      ContextModule mod       ->
+        withDeclFromModule ix mod (viewSource . declUrl)
+      ContextPackage _        -> errSourceOnlyForDeclarations
+
+  -- :minterface
+  ViewModule Interface SelectContext ->
+    case context of
+      ContextModule mod -> viewModuleInterface mod
+      _                 -> throwError "not in a module context"
+
+  -- :minterface <TERM>
+  ViewModule Interface (Search term) ->
+    withFirstSearchResult "module" isModule term $ \target ->
+    withModuleForTarget target $ \mod ->
+    viewModuleInterface mod
+
+  -- :minterface <INDEX>
+  ViewModule Interface (ItemIndex ix) ->
+    case context of
+      ContextEmpty            -> errEmptyContext
+      ContextSearch _ results ->
+        withTarget ix results $ \target ->
+        withModuleForTarget target $ \mod ->
+        viewModuleInterface mod
+      ContextModule mod       -> viewModuleInterface mod
+      ContextPackage package  ->
+        withModuleFromPackage ix package viewModuleInterface
+
+  ViewModule Documentation (Search term) ->
+    case context of
+      ContextModule mod -> viewModuleInterface mod
+      _                 -> throwError "not in a module context"
+
+  ViewModule Documentation _ -> errSourceOnlyForDeclarations
 
   ViewExtendedDocs ix ->
     getTargetGroup' ix $ \tgroup -> do
@@ -338,7 +374,7 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
         url = moduleUrl target
     html <- fetch' url
     let modl = parseModuleDocs url html
-        desc = case declUrl target of
+        desc = case targetDeclUrl target of
           Nothing -> prettyHtml <$> mDescription modl
           Just (DeclUrl _ anchor) -> prettyDecl <$> lookupDecl anchor modl
     viewInTerminalPaged $ fromMaybe mempty desc
@@ -366,9 +402,6 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
         let url = moduleUrl target
         html <- fetch' url
         viewModuleDocs (parseModuleDocs url html)
-
-  ViewSource ix ->
-    getTarget' ix viewSource
 
   ViewPackageModules (Search term) -> do
     let url = hooglePackageUrl term
@@ -403,9 +436,22 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
         return package
     State.modify' $ \s -> s{ sContext = ContextPackage package }
 
+-- errors
+errSourceOnlyForDeclarations :: M a
+errSourceOnlyForDeclarations =
+    throwError "can only view source of declarations"
+
+errEmptyContext :: M a
+errEmptyContext =
+  throwError "empty context"
+
+errNoSourceAvailable :: M a
+errNoSourceAvailable =
+ throwError "no source available for that declaration"
+
 targetDeclaration :: Hoogle.Target -> Module -> Maybe Declaration
 targetDeclaration target mod = do
-  DeclUrl _ anchor <- declUrl target
+  DeclUrl _ anchor <- targetDeclUrl target
   lookupDecl anchor mod
 
 -- TODO: handle if target is a package
@@ -445,10 +491,11 @@ withModuleContext f = do
     ContextModule mdocs -> f mdocs
     _ -> throwError "No module selected"
 
-withTarget :: Int -> [TargetGroup] -> M Hoogle.Target
-withTarget ix results = do
+withTarget :: Int -> [TargetGroup] -> (Hoogle.Target -> M a) -> M a
+withTarget ix results act = do
   tgroup <- elemAt ix results
-  promptSelectOne tgroup
+  target <- promptSelectOne tgroup
+  act target
 
 withTargetGroup :: Int -> [TargetGroup] -> (TargetGroup -> M a) -> M a
 withTargetGroup ix groups act = do
@@ -556,14 +603,11 @@ printDoc handle doc = liftIO $ do
   P.displayIO handle $ P.renderSmart 1 width doc
   putStrLn ""
 
-viewSource :: Hoogle.Target -> M ()
-viewSource target = do
-  mlink <- sourceLink target
-  case mlink of
-    Nothing -> liftIO $ putStrLn "no source available"
-    Just link -> do
-      html <- fetch' link
-      viewInEditor (fileInfo link html)
+viewSource :: DeclUrl -> M ()
+viewSource durl = do
+  link <- sourceLink durl
+  html <- fetch' link
+  viewInEditor (fileInfo link html)
   where
     viewInEditor :: FileInfo -> M ()
     viewInEditor (FileInfo filename mline content) = do
@@ -693,19 +737,16 @@ viewFull tgroup = P.vsep
 -- ================================
 
 -- | Get URL for source file for a target
-sourceLink :: Hoogle.Target -> M (Maybe SourceLink)
-sourceLink target = do
-  case declUrl target of
-    Nothing -> return Nothing
-    Just (DeclUrl murl anchor) -> do
-      html <- fetch' murl
-      let links = sourceLinks murl html
-      case lookup anchor links of
-        Nothing -> error $ unlines $
-          [ "anchor missing in module docs"
-          , show murl
-          ] ++ map show links
-        Just link -> return $ Just link
+sourceLink :: DeclUrl -> M SourceLink
+sourceLink (DeclUrl murl anchor) = do
+  html <- fetch' murl
+  let links = sourceLinks murl html
+  case lookup anchor links of
+    Nothing -> throwError $ unlines $
+      [ "anchor missing in module docs"
+      , show murl
+      ] ++ map show links
+    Just link -> return link
 
 -- | Get URL for module documentation
 moduleUrl :: Hoogle.Target -> ModuleUrl
@@ -713,8 +754,11 @@ moduleUrl target = ModuleUrl (dropAnchor url)
   where
     url = Hoogle.targetURL target
 
-declUrl :: Hoogle.Target -> Maybe DeclUrl
-declUrl target = do
+declUrl :: Declaration -> DeclUrl
+declUrl Declaration{..} =  DeclUrl dModuleUrl dAnchor
+
+targetDeclUrl :: Hoogle.Target -> Maybe DeclUrl
+targetDeclUrl target = do
   anchor <- takeAnchor url
   return $ DeclUrl (moduleUrl target) anchor
   where
