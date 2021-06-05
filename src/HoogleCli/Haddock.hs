@@ -4,8 +4,8 @@
 module HoogleCli.Haddock
   ( Html
   , HtmlPage
-  , Module(..)
   , Declaration(..)
+  , Module(..)
   , Package(..)
   , parseHtmlDocument
   , parseModuleDocs
@@ -50,10 +50,10 @@ newtype HtmlPage = HtmlPage Xml.Element
 
 -- | An exported declaration
 data Declaration = Declaration
-  { dAnchors :: Set Anchor
-  , dAnchor :: Anchor -- ^ Main declaration anchor
+  { dAnchors   :: Set Anchor
+  , dAnchor    :: Anchor -- ^ Main declaration anchor
   , dSignature :: Html
-  , dContent :: [Html]
+  , dContent   :: [Html]
   , dModuleUrl :: ModuleUrl
   }
 
@@ -109,11 +109,13 @@ parseDeclaration moduleUrl (Html el) = do
   ([sig], content) <- return
     $ partition (is "src" . class_) $ children decl
 
-  return Declaration
-    { dAnchors = Set.fromList $ anchors el
-    , dAnchor = case listToMaybe $ anchors sig of
+  let anchor = case listToMaybe $ anchors sig of
         Nothing -> error "declaration with no anchor in signature"
         Just a  -> a
+
+  return Declaration
+    { dAnchors = Set.fromList $ anchors el
+    , dAnchor = anchor
     , dSignature = Html $ asTag "div" sig
     , dContent = Html <$> content
     , dModuleUrl = moduleUrl

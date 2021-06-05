@@ -1,6 +1,15 @@
 module Main where
 
-import HoogleCli (interactive, evaluate, ShellState(..), Context(..), Cmd(..), Selection(..), runCLI)
+import HoogleCli
+  ( interactive
+  , evaluate
+  , ShellState(..)
+  , Context(..)
+  , Cmd(..)
+  , Selection(..)
+  , View(..)
+  , runCLI
+  )
 
 import Control.Monad (void)
 import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
@@ -38,5 +47,4 @@ main' = void $ do
         , sCache = mempty
         }
   runCLI CLI.defaultSettings state $ do
-    evaluate (DefaultCmd $ Search "Data.Set")
-    evaluate (DefaultCmd $ ItemIndex 1)
+    evaluate (ViewModule Documentation $ Search "Data.Set")

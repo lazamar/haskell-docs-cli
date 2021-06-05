@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: b93ed2d3f651f7309f5f6d225da7e38d52ed38a22f593d4875352c2048ef0e4c
+-- hash: 8785004fa4a7e6a695968c285fd9b2d258fcdfdfd1cd9228e97b04fb409ae28d
 
 name:           hoogle-cli
 version:        0.1.0.0
@@ -29,6 +29,7 @@ library
   exposed-modules:
       HoogleCli
       HoogleCli.Haddock
+      HoogleCli.Hoogle
       HoogleCli.Types
   other-modules:
       Paths_hoogle_cli

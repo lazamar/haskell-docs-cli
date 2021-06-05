@@ -9,6 +9,7 @@ module HoogleCli
   , Context(..)
   , Cmd(..)
   , Selection(..)
+  , View(..)
   , packageUrl
   , runCLI
   ) where
@@ -37,7 +38,7 @@ import System.IO (hClose, stdout, Handle)
 import System.IO.Temp (withSystemTempFile)
 
 import HoogleCli.Types
-import HoogleCli.Haddock
+import HoogleCli.Haddock as Haddock
 
 import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Monad.State.Lazy as State
@@ -659,6 +660,8 @@ targetType target =
 -- ================================
 
 -- TODO rename to view declaration and use declaration type
+-- TODO I'm using viewItem in a lot of places where I want
+-- to see the docs and not the interface
 viewItem :: Hoogle.Target -> P.Doc
 viewItem = prettyHtml . parseHoogleHtml . Hoogle.targetItem
 
