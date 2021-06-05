@@ -2,6 +2,7 @@
 
 module HoogleCli.Hoogle where
 
+import Prelude hiding (mod)
 import Data.Maybe (fromMaybe)
 
 import HoogleCli.Types
@@ -29,9 +30,37 @@ fromHoogleTarget target =
         , mDescription = parseHoogleHtml $ Hoogle.targetItem target
         , mDocs        = parseHoogleHtml $ Hoogle.targetDocs target
         }
-    "package" -> undefined
-    _ -> undefined
+    "package" ->
+      Package $ Package_
+        { pUrl         = PackageUrl $ Hoogle.targetURL target
+        , pDescription = parseHoogleHtml $ Hoogle.targetItem target
+        , pDocs        = parseHoogleHtml $ Hoogle.targetDocs target
+        }
+    _ ->
+      let
+          (pkg, pkgUrl) = fromMaybe
+            (error "Hoogle declaration without package info")
+            (Hoogle.targetPackage target)
 
+          (mod, modUrl) = fromMaybe
+            (error "Hoogle declaration without module info")
+            (Hoogle.targetModule target)
+
+          anchor = fromMaybe
+            (error "Hoogle declaration without anchor in Link URL")
+            (takeAnchor $ Hoogle.targetURL target)
+
+          moduleUrl = ModuleUrl modUrl
+      in
+      Declaration $ Declaration_
+        { dUrl         = DeclUrl moduleUrl anchor
+        , dPackage     = pkg
+        , dPackageUrl  = PackageUrl pkgUrl
+        , dModule      = mod
+        , dModuleUrl   = moduleUrl
+        , dDescription = parseHoogleHtml $ Hoogle.targetItem target
+        , dDocs        = parseHoogleHtml $ Hoogle.targetDocs target
+        }
 
 data Declaration = Declaration_
   { dUrl         :: DeclUrl
