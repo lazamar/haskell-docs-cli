@@ -13,6 +13,7 @@ module HoogleCli
   , runCLI
   ) where
 
+import Prelude hiding (mod)
 import Control.Applicative ((<|>))
 import Control.Exception (finally)
 import Control.Monad.Trans.Class (lift)
@@ -74,7 +75,7 @@ type Index = Int
 
 -- | Commands we accept
 data Cmd
-  = DefaultCmd Selection             -- ^ by default we do a Hoogle search or
+  = ViewAny View Selection           -- ^ by default we do a Hoogle search or
                                      -- view/index the current context
   | ViewSource Index                 -- ^ source for target
   | ViewExtendedDocs Index           -- ^ declaration's docs available in the haddock page
@@ -83,10 +84,22 @@ data Cmd
   | ViewPackageModules Selection     -- ^ list modules from a package
   | Quit
 
+-- data Cmd
+--   = ViewAny View Selection
+--   | ViewDeclaration View Selection
+--   | ViewPackage View Selection
+--   | ViewModule View Selection
+--   | Quit
+
 data Selection
   = Search String
   | ItemIndex Index
-  | Default
+  | SelectContext
+
+data View
+  = Documentation
+  | Interface
+  | Source
 
 newtype M a = M { runM :: ExceptT String (StateT ShellState (CLI.InputT IO)) a }
   deriving newtype
@@ -199,7 +212,7 @@ parseCommand str = case str of
             "Command :" <> cmd <> "expects an integer argument"
 
         selection
-          | null args                = Default
+          | null args                = SelectContext
           | Just n <- readMaybe args = ItemIndex n
           | otherwise                = Search args
 
@@ -211,9 +224,10 @@ parseCommand str = case str of
         "package"    -> Right $ ViewPackageModules selection
         "quit"       -> Right Quit
         _ -> error $ "Unknown command: " <> cmd
-  x | Just n <- readMaybe x -> Right $ DefaultCmd $ ItemIndex n
-  [] -> Right $ DefaultCmd Default
-  _ -> Right $ DefaultCmd $ Search str
+  -- no colon cases
+  x | Just n <- readMaybe x -> Right $ ViewAny Interface $ ItemIndex n
+  []                        -> Right $ ViewAny Interface SelectContext
+  _                         -> Right $ ViewAny Interface $ Search str
 
 interactive :: M ()
 interactive = do
@@ -236,38 +250,79 @@ evaluate :: Cmd -> M ()
 evaluate cmd = State.gets sContext >>= \context -> case cmd of
   Quit -> error "impossible"
 
-  DefaultCmd Default -> do
+  -- pressed enter without typing anything
+  ViewAny Interface SelectContext ->
     case context of
       ContextEmpty            -> return ()
       ContextSearch _ results -> viewSearchResults results
       ContextModule mdocs     -> viewModuleInterface mdocs
-      ContextPackage package  -> viewPackageModules package
+      ContextPackage package  -> viewPackageInterface package
 
-  DefaultCmd (Search str) -> do
-    res <- toGroups <$> runSearch str
+  -- <TERM>
+  ViewAny Interface (Search term) -> do
+    res <- toGroups <$> runSearch term
     viewSearchResults res
-    State.modify' $ \s -> s{ sContext = ContextSearch str res }
+    State.modify' $ \s -> s{ sContext = ContextSearch term res }
 
-  DefaultCmd (ItemIndex ix) -> do
+  ViewAny Interface (ItemIndex ix) ->
     case context of
       ContextEmpty -> throwError "no context"
-      ContextSearch _ _ -> getTargetGroup ix (viewInTerminalPaged . viewFull)
-      ContextModule module' -> do
-        decl <- elemAt ix (mDeclarations module')
+      ContextSearch _ results ->
+        withTargetGroup ix results $ viewInTerminalPaged . viewFull
+      ContextModule mod -> do
+        decl <- elemAt ix (mDeclarations mod)
         viewInTerminalPaged $ P.vsep
           [ prettyDecl decl
             -- ad-hoc link colour
           , P.cyan $ P.text $ getUrl (dModuleUrl decl)
           ]
-      ContextPackage (Package _ modules purl) -> do
-        url <- packageModuleUrl purl <$> elemAt ix modules
-        html <- fetch' url
-        let modl = parseModuleDocs url html
-        State.modify' $ \s -> s{ sContext = ContextModule modl }
-        viewModuleInterface modl
+      ContextPackage package ->
+        withModuleFromPackage ix package viewModuleInterface
+
+  -- :documentation
+  ViewAny Documentation SelectContext ->
+    case context of
+      ContextEmpty            -> throwError "empty context"
+      ContextSearch _ results -> viewSearchResults results
+      ContextModule mod       -> viewModuleDocs mod
+      ContextPackage package  -> viewPackageDocs package
+
+  -- :documentation <TERM>
+  ViewAny Documentation (Search term) ->
+    withFirstSearchResult "module" isModule term
+      $ flip withModuleForTarget viewModuleDocs
+
+  -- :documentation <INDEX>
+  ViewAny Documentation (ItemIndex ix) ->
+    case context of
+      ContextEmpty            -> throwError "empty context"
+      ContextSearch _ results ->
+        withTargetGroup ix results $ \tgroup -> do
+        let target = NonEmpty.head tgroup
+        case targetType target of
+          TModule      -> withModuleForTarget target viewModuleDocs
+          TPackage     -> withPackageForTarget target viewPackageDocs
+          TDeclaration ->
+            withModuleForTarget target $ \mod ->
+            viewInTerminalPaged $ case targetDeclaration target mod of
+              Just decl -> prettyDecl decl
+              Nothing -> viewItem target
+      ContextModule mod      -> withDeclFromModule ix mod viewDeclaration
+      ContextPackage package -> withModuleFromPackage ix package viewModuleDocs
+
+  -- :src
+  ViewAny Source SelectContext ->
+    case context of
+      ContextEmpty      -> throwError "empty context"
+      ContextSearch _ _ -> throwError "no declaration selected. Use ':src INT'"
+      ContextModule _   -> throwError "can only view source of declarations"
+      ContextPackage _  -> throwError "can only view source of declarations"
+
+  ViewAny Source (Search term) -> undefined
+  ViewAny Source (ItemIndex term) -> undefined
 
   ViewExtendedDocs ix ->
-    getTargetGroup ix $ \tgroup -> do
+    getTargetGroup' ix $ \tgroup -> do
     let target = NonEmpty.head tgroup
         url = moduleUrl target
     html <- fetch' url
@@ -279,16 +334,16 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
 
   ViewModuleInterface selection ->
     case selection of
-      Default ->
+      SelectContext ->
         case context of
           ContextModule m -> viewModuleInterface m
           _ -> throwError "no module specified"
       Search term ->
-        withFirstSearchResult "module" isModule term moduleForTarget
+        withFirstSearchResult "module" isModule term withModuleForTarget
       ItemIndex ix ->
-        getTarget ix moduleForTarget
+        getTarget' ix withModuleForTarget
     where
-      moduleForTarget target = do
+      withModuleForTarget target = do
         let url = moduleUrl target
         html <- fetch' url
         let modl = parseModuleDocs url html
@@ -297,9 +352,9 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
 
   ViewModuleDocs selection ->
     case selection of
-      Default -> withModuleContext viewModuleDocs
+      SelectContext -> withModuleContext viewModuleDocs
       Search term -> withFirstSearchResult "module" isModule term viewTargetModuleDocs
-      ItemIndex ix -> getTarget ix viewTargetModuleDocs
+      ItemIndex ix -> getTarget' ix viewTargetModuleDocs
     where
       viewTargetModuleDocs target = do
         let url = moduleUrl target
@@ -307,27 +362,27 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
         viewModuleDocs (parseModuleDocs url html)
 
   ViewSource ix ->
-    getTarget ix viewSource
+    getTarget' ix viewSource
 
   ViewPackageModules (Search term) -> do
     let url = hooglePackageUrl term
     html <- fetch' url
     let package = parsePackageDocs url html
-    viewPackageModules package
+    viewPackageInterface package
     State.modify' $ \s -> s{ sContext = ContextPackage package }
 
   ViewPackageModules (ItemIndex ix) ->
     case context of
       ContextSearch _ _ ->
-        getTarget ix $ \target -> do
+        getTarget' ix $ \target -> do
         let url = packageUrl $ moduleUrl target
         html <- fetch' url
         let package = parsePackageDocs url html
-        viewPackageModules package
+        viewPackageInterface package
         State.modify' $ \s -> s{ sContext = ContextPackage package }
       _ -> throwError $ "no package for index " <> show ix
 
-  ViewPackageModules Default -> do
+  ViewPackageModules SelectContext -> do
     package <- case context of
       ContextEmpty -> throwError "no package to show"
       ContextSearch _ _ -> throwError "no index selected"
@@ -335,12 +390,33 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
         let url = packageUrl $ mUrl module'
         html <- fetch' url
         let package = parsePackageDocs url html
-        viewPackageModules package
+        viewPackageInterface package
         return package
       ContextPackage package -> do
-        viewPackageModules package
+        viewPackageInterface package
         return package
     State.modify' $ \s -> s{ sContext = ContextPackage package }
+
+targetDeclaration :: Hoogle.Target -> Module -> Maybe Declaration
+targetDeclaration target mod = do
+  DeclUrl _ anchor <- declUrl target
+  lookupDecl anchor mod
+
+-- TODO: handle if target is a package
+withModuleForTarget
+  :: Hoogle.Target
+  -> (Module -> M ())
+  -> M ()
+withModuleForTarget target act = do
+  let url = moduleUrl target
+  html <- fetch' url
+  let mod = parseModuleDocs url html
+  State.modify' $ \s -> s{ sContext = ContextModule mod }
+  act mod
+
+-- TODO
+withPackageForTarget :: Hoogle.Target -> (Package -> M ()) -> M ()
+withPackageForTarget = error "TODO"
 
 -- | Get an element from a one-indexed index
 elemAt :: Int -> [a] -> M a
@@ -363,11 +439,36 @@ withModuleContext f = do
     ContextModule mdocs -> f mdocs
     _ -> throwError "No module selected"
 
-getTarget :: Int -> (Hoogle.Target -> M a) -> M a
-getTarget ix f = getTargetGroup ix (f <=< promptSelectOne)
+getTarget :: Int -> [TargetGroup] -> M Hoogle.Target
+getTarget ix results = do
+  tgroup <- elemAt ix results
+  promptSelectOne tgroup
 
-getTargetGroup :: Int -> (TargetGroup -> M a) -> M a
-getTargetGroup ix f = withSearchContext $ \results -> do
+withTargetGroup :: Int -> [TargetGroup] -> (TargetGroup -> M a) -> M a
+withTargetGroup ix groups act = do
+  tgroup <- elemAt ix groups
+  act tgroup
+
+withModuleFromPackage :: Int -> Package -> (Module -> M a) -> M a
+withModuleFromPackage ix (Package _ modules purl) act = do
+  url <- packageModuleUrl purl <$> elemAt ix modules
+  html <- fetch' url
+  let mod = parseModuleDocs url html
+  State.modify' $ \s -> s{ sContext = ContextModule mod }
+  act mod
+
+withDeclFromModule :: Int -> Module -> (Declaration -> M a) -> M a
+withDeclFromModule ix mod act = do
+  decl <- elemAt ix (mDeclarations mod)
+  act decl
+
+-- TODO: deprecate
+getTarget' :: Int -> (Hoogle.Target -> M a) -> M a
+getTarget' ix f = getTargetGroup' ix (f <=< promptSelectOne)
+
+-- TODO: deprecate
+getTargetGroup' :: Int -> (TargetGroup -> M a) -> M a
+getTargetGroup' ix f = withSearchContext $ \results -> do
   el <- elemAt ix results
   f el
 
@@ -378,6 +479,9 @@ viewSearchResults
   . reverse
   . numbered
   . map viewSummary
+
+viewDeclaration :: MonadIO m => Declaration -> m ()
+viewDeclaration = viewInTerminalPaged . prettyDecl
 
 viewModuleInterface :: MonadIO m => Module -> m ()
 viewModuleInterface
@@ -390,9 +494,12 @@ viewModuleInterface
 viewModuleDocs :: MonadIO m => Module -> m ()
 viewModuleDocs = viewInTerminalPaged . prettyModule
 
-viewPackageModules :: MonadIO m => Package -> m ()
-viewPackageModules (Package _ modules _) =
+viewPackageInterface :: MonadIO m => Package -> m ()
+viewPackageInterface (Package _ modules _) =
   viewInTerminalPaged $ P.vsep $ numbered (P.text <$> modules)
+
+viewPackageDocs :: MonadIO m => Package -> m ()
+viewPackageDocs = error "TODO"
 
 promptSelectOne :: TargetGroup -> M Hoogle.Target
 promptSelectOne tgroup =
@@ -497,12 +604,23 @@ fetch req = do
         return res
 
 isModule :: Hoogle.Target -> Bool
-isModule target = Hoogle.targetType target == "module"
+isModule target = TModule == targetType target
+
+data TargetType = TModule | TPackage | TDeclaration
+  deriving (Show, Eq)
+
+targetType :: Hoogle.Target -> TargetType
+targetType target =
+  case Hoogle.targetType target of
+    "module" -> TModule
+    "package" -> TPackage
+    _ -> TDeclaration
 
 -- ================================
 -- Pretty printing
 -- ================================
 
+-- TODO rename to view declaration and use declaration type
 viewItem :: Hoogle.Target -> P.Doc
 viewItem = prettyHtml . parseHoogleHtml . Hoogle.targetItem
 
