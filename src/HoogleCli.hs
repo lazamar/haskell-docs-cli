@@ -190,7 +190,8 @@ groupBy f vs = go mempty vs
 
 commands :: [String]
 commands =
-  [ "src"
+  [ "documentation"
+  , "src"
   , "quit"
   , "module-doc"
   , "edoc"
@@ -217,12 +218,13 @@ parseCommand str = case str of
           | otherwise                = Search args
 
     case cmd of
-        "src"        -> intCmd ViewSource
-        "module-doc" -> Right $ ViewModuleDocs selection
-        "edoc"       -> intCmd ViewExtendedDocs
-        "interface"  -> Right $ ViewModuleInterface selection
-        "package"    -> Right $ ViewPackageModules selection
-        "quit"       -> Right Quit
+        "documentation" -> Right $ ViewAny Documentation selection
+        "interface"     -> Right $ ViewAny Interface selection
+        "src"           -> Right $ ViewAny Source selection
+        "module-doc"    -> Right $ ViewModuleDocs selection
+        "edoc"          -> intCmd ViewExtendedDocs
+        "package"       -> Right $ ViewPackageModules selection
+        "quit"          -> Right Quit
         _ -> error $ "Unknown command: " <> cmd
   -- no colon cases
   x | Just n <- readMaybe x -> Right $ ViewAny Interface $ ItemIndex n
@@ -348,16 +350,11 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
           ContextModule m -> viewModuleInterface m
           _ -> throwError "no module specified"
       Search term ->
-        withFirstSearchResult "module" isModule term withModuleForTarget
+        withFirstSearchResult "module" isModule term $ \target ->
+          withModuleForTarget target viewModuleInterface
       ItemIndex ix ->
-        getTarget' ix withModuleForTarget
-    where
-      withModuleForTarget target = do
-        let url = moduleUrl target
-        html <- fetch' url
-        let modl = parseModuleDocs url html
-        State.modify' $ \s -> s{ sContext = ContextModule modl }
-        viewModuleInterface modl
+        getTarget' ix $ \target ->
+          withModuleForTarget target viewModuleInterface
 
   ViewModuleDocs selection ->
     case selection of
@@ -448,8 +445,8 @@ withModuleContext f = do
     ContextModule mdocs -> f mdocs
     _ -> throwError "No module selected"
 
-getTarget :: Int -> [TargetGroup] -> M Hoogle.Target
-getTarget ix results = do
+withTarget :: Int -> [TargetGroup] -> M Hoogle.Target
+withTarget ix results = do
   tgroup <- elemAt ix results
   promptSelectOne tgroup
 
