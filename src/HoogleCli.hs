@@ -318,7 +318,8 @@ evaluate cmd = State.gets sContext >>= \context -> case cmd of
           Hoogle.Package _ ->
             withPackageForItem item viewPackageDocs
           Hoogle.Declaration d ->
-            withModuleForItem item $ \mod ->
+            withModuleForItem item $ \mod -> do
+            State.modify' $ \ s -> s { sContext =  context }
             viewInTerminalPaged $ case targetDeclaration d mod of
               Just decl -> prettyDecl decl
               Nothing   -> viewDescription item
