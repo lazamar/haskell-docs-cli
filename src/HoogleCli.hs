@@ -24,7 +24,9 @@ import Control.Monad.Catch (MonadThrow)
 import Control.Concurrent.MVar (MVar)
 import Control.Monad.State.Lazy (MonadState, StateT)
 import Data.Foldable (toList)
+import Data.Function (on)
 import Data.Functor ((<&>))
+import Data.List.NonEmpty (NonEmpty)
 import Data.Bifunctor (bimap)
 import Data.ByteString.Lazy (ByteString)
 import Control.Monad.IO.Class (MonadIO, liftIO)
@@ -67,7 +69,7 @@ data ShellState = ShellState
   , sCache :: Map Url (MVar ByteString)
   }
 
-type TargetGroup = NonEmpty.NonEmpty Hoogle.Item
+type TargetGroup = NonEmpty Hoogle.Item
 
 -- | Context referenced by commands that contain an index
 data Context
@@ -307,7 +309,7 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
   -- :documentation <TERM>
   ViewAny Documentation (Search term) ->
     withFirstSearchResult moduleResult term $ \hmod ->
-    withModuleForItem (Hoogle.Module hmod) viewModuleDocs
+    withModule (Hoogle.mUrl hmod) viewModuleDocs
 
   -- :documentation <INDEX>
   ViewAny Documentation (ItemIndex ix) ->
@@ -318,12 +320,12 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
         withTargetGroup ix results $ \tgroup -> do
         let item = NonEmpty.head tgroup
         case item of
-          Hoogle.Module _ ->
-            withModuleForItem item viewModuleDocs
-          Hoogle.Package _ ->
-            withPackageForItem item viewPackageDocs
+          Hoogle.Module hmod ->
+            withModule (Hoogle.mUrl hmod) viewModuleDocs
+          Hoogle.Package pkg ->
+            withPackage (Hoogle.pUrl pkg) viewPackageDocs
           Hoogle.Declaration d ->
-            withModuleForItem item $ \mod -> do
+            withModule (Hoogle.dModuleUrl d) $ \mod -> do
             State.modify' $ \ s -> s { sContext =  context }
             viewInTerminalPaged $ case targetDeclaration d mod of
               Just decl -> prettyDecl decl
@@ -387,7 +389,7 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
   -- :mdocumentation <TERM>
   ViewModule view (Search term) ->
     withFirstSearchResult moduleResult term $ \hmod ->
-    withModuleForItem (Hoogle.Module hmod) $ \mod ->
+    withModule (Hoogle.mUrl hmod) $ \mod ->
     viewModule view mod
 
   -- :minterface <INDEX>
@@ -397,9 +399,7 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
       ContextEmpty ->
         errEmptyContext
       ContextSearch _ results ->
-        withItem ix results $ \item ->
-        withModuleForItem item $ \mod ->
-        viewModule view mod
+        withModuleForIndex ix results (viewModule view)
       ContextModule mod ->
         viewModule view mod
       ContextPackage package ->
@@ -428,9 +428,7 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
       ContextEmpty ->
         errEmptyContext
       ContextSearch _ results ->
-        withItem ix results $ \target ->
-        withPackageForItem target $ \package ->
-        viewPackage view package
+        withPackageForIndex ix results (viewPackage view)
       ContextModule mod ->
         withPackageForModule mod (viewPackage view)
       ContextPackage package ->
@@ -450,30 +448,22 @@ errNoSourceAvailable =
  throwError "no source available for that declaration"
 
 targetDeclaration :: Hoogle.Declaration -> Module -> Maybe Declaration
-targetDeclaration decl mod = lookupDecl anchor mod
+targetDeclaration decl = lookupDecl anchor
   where
     DeclUrl _ anchor = Hoogle.dUrl decl
 
-withModuleForItem
-  :: Hoogle.Item
-  -> (Module -> M ())
-  -> M ()
-withModuleForItem item act = do
-  url <- case item of
-    Hoogle.Declaration d -> return $ Hoogle.dModuleUrl d
-    Hoogle.Module      m -> return $ Hoogle.mUrl m
-    Hoogle.Package     _ -> throwError "no module specified for package"
+withModule
+  :: ModuleUrl
+  -> (Module -> M a)
+  -> M a
+withModule url act = do
   html <- fetch' url
   let mod = parseModuleDocs url html
   State.modify' $ \s -> s{ sContext = ContextModule mod }
   act mod
 
-withPackageForItem :: Hoogle.Item -> (Package -> M a) -> M a
-withPackageForItem item act = do
-  let url = case item of
-        Hoogle.Declaration d -> Hoogle.dPackageUrl d
-        Hoogle.Module      m -> Hoogle.mPackageUrl m
-        Hoogle.Package     p -> Hoogle.pUrl p
+withPackage :: PackageUrl -> (Package -> M a) -> M a
+withPackage url act = do
   html <- fetch' url
   let package = parsePackageDocs url html
   State.modify' $ \s -> s{ sContext = ContextPackage package }
@@ -494,11 +484,65 @@ elemAt ix =
   . listToMaybe
   . drop (ix - 1)
 
-withItem :: Int -> [TargetGroup] -> (Hoogle.Item -> M a) -> M a
-withItem ix results act = do
+withPackageForIndex :: Int -> [TargetGroup] -> (Package -> M a) -> M a
+withPackageForIndex ix results act = do
   tgroup <- elemAt ix results
-  target <- promptSelectOne tgroup
-  act target
+  purl <- selectPackage tgroup
+  withPackage purl act
+  where
+    selectPackage :: TargetGroup -> M PackageUrl
+    selectPackage
+      = promptSelectOne
+      . NonEmpty.fromList
+      . nubBy ((==) `on` fst)
+      . mapMaybe f
+      . toList
+
+    f :: Hoogle.Item -> Maybe (PackageUrl, P.Doc)
+    f x = case x of
+      Hoogle.Module m      -> (Hoogle.mPackageUrl m,) <$> viewItemPackage x
+      Hoogle.Declaration d -> (Hoogle.dPackageUrl d,) <$> viewItemPackage x
+      Hoogle.Package p     -> (Hoogle.pUrl p,)        <$> viewItemPackage x
+
+withModuleForIndex :: Int -> [TargetGroup] -> (Module -> M a) -> M a
+withModuleForIndex ix results act = do
+  tgroup <- elemAt ix results
+  murl <- selectModule tgroup
+  withModule murl act
+  where
+    selectModule :: TargetGroup -> M ModuleUrl
+    selectModule
+      = promptSelectOne
+      . NonEmpty.fromList
+      . mapMaybe f
+      . toList
+
+    f :: Hoogle.Item -> Maybe (ModuleUrl, P.Doc)
+    f x = case x of
+      Hoogle.Module m ->
+        (Hoogle.mUrl m,) <$> viewItemPackageAndModule x
+      Hoogle.Declaration d ->
+        (Hoogle.dModuleUrl d,) <$> viewItemPackageAndModule x
+      Hoogle.Package _ ->
+        Nothing
+
+promptSelectOne :: NonEmpty (a, P.Doc) -> M a
+promptSelectOne nonEmptyXs
+  | [(x,_)] <- toList nonEmptyXs = return x
+  | xs      <- toList nonEmptyXs = do
+    liftIO $ putStrLn "Select one:"
+    viewInTerminal $ P.vsep $ numbered $ map snd xs
+    num <- getInputLine ": "
+    case readMaybe =<< num of
+      Just n -> case listToMaybe $ drop (n - 1) xs of
+        Just (x, _) -> return x
+        Nothing -> do
+          liftIO $ putStrLn "Invalid index"
+          promptSelectOne nonEmptyXs
+      Nothing -> do
+        liftIO $ putStrLn "Number not recognised"
+        promptSelectOne nonEmptyXs
+
 
 withTargetGroup :: Int -> [TargetGroup] -> (TargetGroup -> M a) -> M a
 withTargetGroup ix groups act = do
@@ -554,29 +598,6 @@ viewPackageInterface (Package _ modules _) =
 
 viewPackageDocs :: MonadIO m => Package -> m ()
 viewPackageDocs = error "TODO"
-
-promptSelectOne :: TargetGroup -> M Hoogle.Item
-promptSelectOne tgroup =
-  case toList tgroup of
-    [item] -> return item
-    targets -> do
-      liftIO $ do
-        putStrLn "Select one:"
-        viewInTerminal
-          $ P.vsep
-          $ numbered
-          $ mapMaybe viewPackageAndModule targets
-
-      num <- getInputLine ": "
-      case readMaybe =<< num of
-        Just n -> case listToMaybe $ drop (n - 1) targets of
-          Just item -> return item
-          Nothing -> do
-            liftIO $ putStrLn "Invalid index"
-            promptSelectOne tgroup
-        Nothing -> do
-          liftIO $ putStrLn "Number not recognised"
-          promptSelectOne tgroup
 
 viewInTerminal :: MonadIO m => P.Doc -> m ()
 viewInTerminal = printDoc stdout
@@ -690,20 +711,33 @@ viewPackageInfoList
   = P.group
   . P.fillSep
   . P.punctuate P.comma
-  . mapMaybe viewPackageAndModule
+  . mapMaybe viewItemPackageAndModule
   . toList
 
-viewPackageAndModule :: Hoogle.Item -> Maybe P.Doc
-viewPackageAndModule = \case
+viewPackageName :: String -> P.Doc
+viewPackageName = P.magenta . P.text
+
+viewModuleName :: String -> P.Doc
+viewModuleName = P.black . P.text
+
+viewItemPackage :: Hoogle.Item -> Maybe P.Doc
+viewItemPackage = \case
   Hoogle.Declaration d ->
-    Just $ prettyP (Hoogle.dPackage d) P.<+> prettyM (Hoogle.dModule d)
+    Just $ viewPackageName (Hoogle.dPackage d)
   Hoogle.Module m ->
-    Just $ prettyP (Hoogle.mPackage m)
+    Just $ viewPackageName (Hoogle.mPackage m)
   Hoogle.Package _ ->
     Nothing
-  where
-    prettyP = P.magenta . P.text
-    prettyM = P.black . P.text
+
+viewItemPackageAndModule :: Hoogle.Item -> Maybe P.Doc
+viewItemPackageAndModule = \case
+  Hoogle.Declaration d ->
+    Just $ viewPackageName (Hoogle.dPackage d)
+      P.<+> viewModuleName (Hoogle.dModule d)
+  Hoogle.Module m ->
+    Just $ viewPackageName (Hoogle.mPackage m)
+  Hoogle.Package _ ->
+    Nothing
 
 prettyModule :: Module -> P.Doc
 prettyModule (Module name minfo decls _) =
