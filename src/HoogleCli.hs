@@ -550,8 +550,8 @@ withTargetGroup ix groups act = do
   act tgroup
 
 withModuleFromPackage :: Int -> Package -> (Module -> M a) -> M a
-withModuleFromPackage ix (Package _ modules purl) act = do
-  url <- packageModuleUrl purl <$> elemAt ix modules
+withModuleFromPackage ix Package{..} act = do
+  url <- packageModuleUrl pUrl <$> elemAt ix pModules
   html <- fetch' url
   let mod = parseModuleDocs url html
   State.modify' $ \s -> s{ sContext = ContextModule mod }
@@ -593,11 +593,24 @@ viewPackage Interface = viewPackageInterface
 viewPackage Documentation = viewPackageDocs
 
 viewPackageInterface :: MonadIO m => Package -> m ()
-viewPackageInterface (Package _ modules _) =
-  viewInTerminalPaged $ P.vsep $ numbered (P.text <$> modules)
+viewPackageInterface Package{..} =
+  viewInTerminalPaged $ P.vsep $ numbered (P.text <$> pModules)
 
 viewPackageDocs :: MonadIO m => Package -> m ()
-viewPackageDocs = error "TODO"
+viewPackageDocs Package{..} = viewInTerminalPaged $ P.vsep
+  [ P.text $ case pSubTitle of
+      Nothing -> pTitle
+      Just s -> pTitle <> ": " <> s
+  , section "Description" (prettyHtml pDescription)
+  , section "Properties" (P.vsep $ map viewProp pProperties)
+  ]
+  where
+    section heading body =
+      P.text heading <> P.nest 2 (P.linebreak <> body)
+
+    viewProp (title, body) =
+      section title (prettyHtml body)
+
 
 viewInTerminal :: MonadIO m => P.Doc -> m ()
 viewInTerminal = printDoc stdout
@@ -694,9 +707,6 @@ toDecl = \case
 -- Pretty printing
 -- ================================
 
--- TODO rename to view declaration and use declaration type
--- TODO I'm using viewDescription in a lot of places where I want
--- to see the docs and not the interface
 viewDescription :: Hoogle.Item -> P.Doc
 viewDescription = prettyHtml . Hoogle.description
 

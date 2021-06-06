@@ -22,6 +22,7 @@ module HoogleCli.Haddock
 
 import HoogleCli.Types
 
+import Debug.Trace
 import Data.List.Extra (unescapeHTML)
 import Data.Foldable (fold)
 import Control.Monad (foldM)
@@ -68,9 +69,12 @@ data Module = Module
   }
 
 data Package = Package
-  { pTitle :: String
-  , pModules :: [String]
-  , pUrl :: PackageUrl
+  { pTitle       :: String
+  , pSubTitle    :: Maybe String
+  , pDescription :: Html
+  , pProperties  :: [(String, Html)]
+  , pModules     :: [String]
+  , pUrl         :: PackageUrl
   }
 
 parseHtmlDocument :: ByteString -> HtmlPage
@@ -131,18 +135,40 @@ parseDeclaration moduleUrl (Html el) = do
 
 parsePackageDocs :: PackageUrl -> HtmlPage -> Package
 parsePackageDocs url (HtmlPage root) = pageContent $ do
-  body    <- findM (is "body" . tag) (children root)
-  content <- findM (is "content" . id_) (children body)
-  title   <- findM (is "h1" . tag) (children content)
-    >>= findM (is "a" . tag) . children
-  moduleList <- findM (is "modules" . id_) (children content)
+  body        <- findM (is "body" . tag) (children root)
+  content     <- findM (is "content" . id_) (children body)
+  heading     <- findM (is "h1" . tag) (children content)
+  title       <- findM (is "a" . tag) (children heading)
+  description <- findM (is "description" . id_) (children content)
+  moduleList  <- findM (is "modules" . id_) (children content)
     >>= findM (is "module-list" . id_) . children
-  let modules = innerText <$> findRec (is "module" . class_) moduleList
+  let
+    subTitle = findM (is "small" . tag) (children heading)
+
+    properties = do
+      wrapper <- findM (is "properties" . id_) (children content)
+             >>= findM (is "table" . tag) . children
+             >>= findM (is "tbody" . tag) . children
+      prop    <- filter (is "tr" . tag) (children wrapper)
+      ptitle  <-
+        filter (traceShowId . not . flip elem uninterestingProps . traceShowId)
+        $ map (unescapeHTML . Text.unpack . innerText)
+        $ findM (is "th" . tag) (children prop)
+      pdesc <- findM (is "td" . tag) (children prop)
+      return (ptitle, Html pdesc)
+
+    modules = innerText <$> findRec (is "module" . class_) moduleList
   return Package
     { pTitle = Text.unpack $ innerText title
+    , pSubTitle = Text.unpack . innerText <$> subTitle
+    , pDescription = Html description
+    , pProperties = properties
     , pModules = Text.unpack <$> modules
     , pUrl = url
     }
+  where
+    -- Properties that are not interesting for the command line
+    uninterestingProps = ["Your Rating", "Change log"]
 
 -- | postorder traversal returning elements that match a predicate.
 -- If the predicate is matched, the element's children are not explored
