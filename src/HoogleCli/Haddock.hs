@@ -27,6 +27,7 @@ import Data.Foldable (fold)
 import Control.Monad (foldM)
 import Data.Maybe (fromMaybe, mapMaybe, listToMaybe)
 import Data.List hiding (groupBy)
+import Data.List.Extra (breakOn)
 import Data.Maybe (isJust)
 import Data.Char (isSpace)
 import Data.Text (Text)
@@ -383,12 +384,17 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
 -- | Convert an html page into a src file and inform of line
 -- number of SourceLink
 fileInfo :: SourceLink -> HtmlPage -> FileInfo
-fileInfo s@(SourceLink _ anchor) (HtmlPage root) = pageContent "fileInfo" s $ do
-  head_ <- filter (is "head" . tag) $ children root
-  title <- filter (is "title" . tag) $ children head_
-  let filename = Text.unpack $ Text.replace "/" "." $ innerText title <> ".hs"
+fileInfo s@(SourceLink url anchor) (HtmlPage root) = pageContent "fileInfo" s $ do
   body <- filter (is "body" . tag) $ children root
   return $ FileInfo filename (anchorLine anchor body) (innerText body)
+  where
+    filename
+      = (<> ".hs")
+      $ map (\c -> if c == '/' then '-' else c)
+      $ fst
+      $ breakOn ".html"
+      $ snd
+      $ breakOn "src/" url
 
 -- | File line where the tag is
 anchorLine :: Anchor -> Xml.Element -> Maybe Int
