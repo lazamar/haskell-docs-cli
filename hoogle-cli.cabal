@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 8785004fa4a7e6a695968c285fd9b2d258fcdfdfd1cd9228e97b04fb409ae28d
+-- hash: 2459a2b362e5465cfb7273378b3778148c89dfeb948cf7e9fd1cecaa23e6dce4
 
 name:           hoogle-cli
 version:        0.1.0.0
@@ -49,6 +49,7 @@ library
     , html-conduit
     , http-client
     , http-client-tls
+    , http-types
     , mtl
     , optparse-applicative
     , process
@@ -81,6 +82,7 @@ executable hoogle-cli-exe
     , html-conduit
     , http-client
     , http-client-tls
+    , http-types
     , mtl
     , optparse-applicative
     , process
@@ -114,6 +116,7 @@ test-suite hoogle-cli-test
     , html-conduit
     , http-client
     , http-client-tls
+    , http-types
     , mtl
     , optparse-applicative
     , process

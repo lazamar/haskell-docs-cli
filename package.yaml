@@ -24,6 +24,7 @@ dependencies:
 - hoogle
 - http-client
 - http-client-tls
+- http-types
 - aeson
 - optparse-applicative
 - text

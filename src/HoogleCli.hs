@@ -18,6 +18,7 @@ module HoogleCli
 import Prelude hiding (mod)
 import Control.Applicative ((<|>))
 import Control.Exception (finally)
+import Control.Monad (unless)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Except (ExceptT(..), MonadError, catchError, runExceptT, throwError)
 import Control.Monad.Catch (MonadThrow)
@@ -57,6 +58,7 @@ import qualified Data.Text as Text
 import qualified Data.Text.Encoding as Text
 import qualified Data.Text.IO as Text (hPutStr)
 import qualified Network.HTTP.Client as Http
+import qualified Network.HTTP.Types.Status as Http
 import qualified System.Console.Haskeline as CLI
 import qualified System.Process as Process
 import qualified System.Console.Terminal.Size as Terminal
@@ -674,10 +676,15 @@ fetch req = do
       manager <- State.gets sManager
       mvar <- liftIO MVar.newEmptyMVar
       State.modify $ \s -> s { sCache = Map.insert key mvar (sCache s) }
-      liftIO $ do
-        res <- Http.responseBody <$> Http.httpLbs req manager
-        MVar.putMVar mvar res
-        return res
+      res <- liftIO $ Http.httpLbs req manager
+      let status = Http.responseStatus res
+      unless (Http.statusIsSuccessful status) $
+        throwError
+          $ "unable to fetch page:"
+          <> Text.unpack (Text.decodeUtf8 $ Http.statusMessage status)
+      let body = Http.responseBody res
+      liftIO $ MVar.putMVar mvar body
+      return body
 
 moduleResult :: (String, Hoogle.Item -> Maybe Hoogle.Module)
 moduleResult = ("module", toModule)
