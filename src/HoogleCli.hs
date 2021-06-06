@@ -662,14 +662,14 @@ getEditor = getEnv "VISUAL" <|> getEnv "EDITOR" <|> defaultEditor
 
 fetch' :: HasUrl a => a -> M HtmlPage
 fetch' x = do
-  req <- liftIO $ Http.parseRequest $ getUrl x
+  req <- liftIO $ Http.parseRequest $ dropAnchor $ getUrl x
   src <- fetch req
   return (parseHtmlDocument src)
 
 fetch :: Http.Request -> M LB.ByteString
 fetch req = do
   cache <- State.gets sCache
-  let key = dropAnchor $ show req
+  let key = show req
   case Map.lookup key cache of
     Just mvar -> liftIO $ MVar.readMVar mvar
     Nothing -> do
