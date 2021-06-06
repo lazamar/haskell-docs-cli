@@ -38,7 +38,7 @@ import Data.List.Extra (breakOn)
 import Data.Char (isSpace)
 import Data.Map.Strict (Map)
 import System.Environment (getEnv)
-import System.IO (hClose, stdout, Handle)
+import System.IO (hPutStrLn, hClose, stdout, Handle)
 import System.IO.Temp (withSystemTempFile)
 import System.Exit (exitSuccess)
 import qualified Hoogle as H
@@ -641,7 +641,7 @@ printDoc :: MonadIO m => Handle -> P.Doc -> m ()
 printDoc handle doc = liftIO $ do
   width <- min maxWidth . maybe maxWidth Terminal.width <$> Terminal.size
   P.displayIO handle $ P.renderSmart 1 width doc
-  putStrLn ""
+  hPutStrLn handle ""
 
 viewSource :: DeclUrl -> M ()
 viewSource durl = do
