@@ -683,7 +683,7 @@ fetch req = do
       let status = Http.responseStatus res
       unless (Http.statusIsSuccessful status) $
         throwError
-          $ "unable to fetch page:"
+          $ "unable to fetch page: "
           <> Text.unpack (Text.decodeUtf8 $ Http.statusMessage status)
       let body = Http.responseBody res
       liftIO $ MVar.putMVar mvar body
