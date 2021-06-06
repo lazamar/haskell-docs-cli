@@ -411,8 +411,11 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
   -- :pdocumentation
   ViewPackage view SelectContext ->
     case context of
-      ContextPackage package -> viewPackage view package
-      _                      -> throwError "not in a package context"
+      ContextPackage package ->
+        viewPackage view package
+      ContextModule mod ->
+        withPackageForModule mod (viewPackage view)
+      _ -> throwError "not in a package context"
 
   -- :pinterface <TERM>
   -- :pdocumentation <TERM>
