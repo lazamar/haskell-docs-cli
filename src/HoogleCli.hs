@@ -293,7 +293,7 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
         viewInTerminalPaged $ P.vsep
           [ prettyDecl decl
             -- ad-hoc link colour
-          , P.cyan $ P.text $ getUrl (dModuleUrl decl)
+          , P.cyan $ P.text $ getUrl (dDeclUrl decl)
           ]
       ContextPackage package ->
         withModuleFromPackage ix package viewModuleInterface
@@ -667,7 +667,7 @@ fetch' x = do
 fetch :: Http.Request -> M LB.ByteString
 fetch req = do
   cache <- State.gets sCache
-  let key = show req
+  let key = dropAnchor $ show req
   case Map.lookup key cache of
     Just mvar -> liftIO $ MVar.readMVar mvar
     Nothing -> do

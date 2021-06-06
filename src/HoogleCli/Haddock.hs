@@ -59,6 +59,7 @@ data Declaration = Declaration
   , dSignature :: Html
   , dContent   :: [Html]
   , dModuleUrl :: ModuleUrl
+  , dDeclUrl   :: DeclUrl
   }
 
 data Module = Module
@@ -131,6 +132,7 @@ parseDeclaration moduleUrl (Html el) = do
     , dSignature = Html $ asTag "div" sig
     , dContent = Html <$> content
     , dModuleUrl = moduleUrl
+    , dDeclUrl = DeclUrl moduleUrl anchor
     }
   where
     asTag t e = e
