@@ -90,12 +90,17 @@ parseHoogleHtml
   . Text.pack
   . (\v -> "<div>" <> v <> "</div>")
 
-pageContent :: [a] -> a
-pageContent [] = error "Unable to parse page"
-pageContent (x:_) = x
+pageContent :: HasUrl url => String -> url -> [a] -> a
+pageContent ty from parsed =
+  case parsed of
+    [x] -> x
+    []  -> error $ "Unable to parse page as "<> what
+    _   -> error $ "Ambiguous parse for "<> what
+    where
+      what = ty <> ": " <> getUrl from
 
 parseModuleDocs :: ModuleUrl -> HtmlPage -> Module
-parseModuleDocs murl (HtmlPage root) = pageContent $ do
+parseModuleDocs murl (HtmlPage root) = pageContent "moduleDocs" murl $ do
   body    <- findM (is "body" . tag) $ children root
   content <- findM (is "content" . id_) $ children body
   let mtitle = do
@@ -134,7 +139,7 @@ parseDeclaration moduleUrl (Html el) = do
       }
 
 parsePackageDocs :: PackageUrl -> HtmlPage -> Package
-parsePackageDocs url (HtmlPage root) = pageContent $ do
+parsePackageDocs url (HtmlPage root) = pageContent "packageDocs" url $ do
   body        <- findM (is "body" . tag) (children root)
   content     <- findM (is "content" . id_) (children body)
   heading     <- findM (is "h1" . tag) (children content)
@@ -377,7 +382,7 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
 -- | Convert an html page into a src file and inform of line
 -- number of SourceLink
 fileInfo :: SourceLink -> HtmlPage -> FileInfo
-fileInfo (SourceLink _ anchor) (HtmlPage root) = pageContent $ do
+fileInfo s@(SourceLink _ anchor) (HtmlPage root) = pageContent "fileInfo" s $ do
   head_ <- filter (is "head" . tag) $ children root
   title <- filter (is "title" . tag) $ children head_
   let filename = Text.unpack $ Text.replace "/" "." $ innerText title <> ".hs"

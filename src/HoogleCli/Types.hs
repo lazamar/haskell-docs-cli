@@ -45,3 +45,18 @@ data FileInfo = FileInfo
   , fLine :: Maybe Int
   , fContent :: FileContent
   }
+
+class HasUrl a where
+  getUrl :: a -> Url
+
+instance HasUrl DeclUrl where
+  getUrl (DeclUrl url anchor) = getUrl url ++ "#" ++ Text.unpack anchor
+instance HasUrl ModuleUrl where
+  getUrl (ModuleUrl url) = url
+instance HasUrl SourceLink where
+  getUrl (SourceLink url _) = url
+instance HasUrl PackageUrl where
+  getUrl (PackageUrl url) = url
+instance HasUrl Url where
+  getUrl url = url
+
