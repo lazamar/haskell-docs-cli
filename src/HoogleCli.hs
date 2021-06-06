@@ -603,7 +603,7 @@ viewPackageInterface Package{..} =
 
 viewPackageDocs :: MonadIO m => Package -> m ()
 viewPackageDocs Package{..} = viewInTerminalPaged $ P.vsep
-  [ P.text $ case pSubTitle of
+  [ mainHeading $ case pSubTitle of
       Nothing -> pTitle
       Just s -> pTitle <> ": " <> s
   , section "Description" (prettyHtml pDescription)
@@ -708,6 +708,15 @@ toDecl = \case
 -- Pretty printing
 -- ================================
 
+mainHeading :: String -> P.Doc
+mainHeading str = P.vsep
+  [ divider
+  , P.text str
+  , divider
+  ]
+  where
+    divider = P.text $ replicate maxWidth '='
+
 viewDescription :: Hoogle.Item -> P.Doc
 viewDescription = prettyHtml . Hoogle.description
 
@@ -752,15 +761,9 @@ viewItemPackageAndModule = \case
 
 prettyModule :: Module -> P.Doc
 prettyModule (Module name minfo decls _) =
-  P.vsep $ [title]
+  P.vsep $ [mainHeading name]
     ++ [ prettyHtml info | Just info <- [minfo] ]
     ++ [ prettyDecl decl | decl <- decls ]
-  where
-    title = P.vsep
-      [ P.text name
-      , P.text $ replicate (length name) '='
-      , ""
-      ]
 
 prettyDecl :: Declaration -> P.Doc
 prettyDecl Declaration{..} =

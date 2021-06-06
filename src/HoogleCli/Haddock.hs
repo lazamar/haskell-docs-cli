@@ -22,7 +22,6 @@ module HoogleCli.Haddock
 
 import HoogleCli.Types
 
-import Debug.Trace
 import Data.List.Extra (unescapeHTML)
 import Data.Foldable (fold)
 import Control.Monad (foldM)
@@ -158,7 +157,7 @@ parsePackageDocs url (HtmlPage root) = pageContent "packageDocs" url $ do
              >>= findM (is "tbody" . tag) . children
       prop    <- filter (is "tr" . tag) (children wrapper)
       ptitle  <-
-        filter (traceShowId . not . flip elem uninterestingProps . traceShowId)
+        filter (not . flip elem uninterestingProps)
         $ map (unescapeHTML . Text.unpack . innerText)
         $ findM (is "th" . tag) (children prop)
       pdesc <- findM (is "td" . tag) (children prop)
