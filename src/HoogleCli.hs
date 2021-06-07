@@ -18,7 +18,7 @@ module HoogleCli
 import Prelude hiding (mod)
 import Control.Applicative ((<|>))
 import Control.Exception (finally)
-import Control.Monad (unless)
+import Control.Monad (unless, void)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Except (ExceptT(..), MonadError, catchError, runExceptT, throwError)
 import Control.Monad.Catch (MonadThrow)
@@ -47,6 +47,7 @@ import HoogleCli.Types
 import HoogleCli.Haddock as Haddock
 import qualified HoogleCli.Hoogle as Hoogle
 
+import qualified Control.Concurrent.Async as Async
 import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Monad.State.Lazy as State
 import qualified Data.Aeson as Aeson
@@ -624,14 +625,20 @@ viewInTerminal = printDoc stdout
 viewInTerminalPaged :: MonadIO m => P.Doc -> m ()
 viewInTerminalPaged doc = withPager $ \handle -> printDoc handle doc
 
-withPager :: MonadIO m => (Handle -> IO a)  -> m a
+withPager :: MonadIO m => (Handle -> IO ())  -> m ()
 withPager act = liftIO $ do
-  let cmd = (Process.proc "less" ["-iFRX"]) { Process.std_in = Process.CreatePipe }
-  Process.withCreateProcess cmd
-     $ \(Just hin) _ _ p -> do
-       res <- act hin `finally` hClose hin
-       _   <- Process.waitForProcess p
-       return res
+  mvar <- MVar.newEmptyMVar
+  Async.withAsync (createPager mvar) $ \pager -> do
+    handle <- MVar.readMVar mvar
+    act handle `finally` putStrLn "act error"
+    void $ Async.waitCatch pager `finally` putStrLn "waitCatch error"
+  where
+    cmd = (Process.proc "less" ["-iFRX"]) { Process.std_in = Process.CreatePipe }
+    createPager mvar =
+      Process.withCreateProcess cmd
+         $ \(Just hin) _ _ p ->
+           (do MVar.putMVar mvar hin; Process.waitForProcess p)
+           `finally` hClose hin `finally` putStrLn "hclose error"
 
 -- | Maximum screen width for flowing text.
 -- Fixed-width portions will still overflow that.

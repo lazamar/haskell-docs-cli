@@ -41,6 +41,7 @@ dependencies:
 - terminal-size
 - mtl
 - exceptions
+- async
 
 default-extensions:
 - ApplicativeDo

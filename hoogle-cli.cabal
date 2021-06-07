@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2459a2b362e5465cfb7273378b3778148c89dfeb948cf7e9fd1cecaa23e6dce4
+-- hash: 38e7a70ee6fa299a0ae8d0493173906fd6c3870d2c0ef4794a1e008937fdbc1a
 
 name:           hoogle-cli
 version:        0.1.0.0
@@ -39,6 +39,7 @@ library
   build-depends:
       aeson
     , ansi-wl-pprint
+    , async
     , base >=4.7 && <5
     , bytestring
     , containers
@@ -71,6 +72,7 @@ executable hoogle-cli-exe
   build-depends:
       aeson
     , ansi-wl-pprint
+    , async
     , base >=4.7 && <5
     , bytestring
     , containers
@@ -105,6 +107,7 @@ test-suite hoogle-cli-test
   build-depends:
       aeson
     , ansi-wl-pprint
+    , async
     , base >=4.7 && <5
     , bytestring
     , containers
