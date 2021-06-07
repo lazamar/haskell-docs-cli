@@ -412,7 +412,7 @@ anchorLine anchor
       Xml.NodeContent txt -> Right $ n + Text.count "\n" txt
       Xml.NodeComment _ -> Right n
       Xml.NodeElement e ->
-        if attr "name" e == anchor
+        if attr "name" e == anchor || id_ e == anchor
           then Left n
           else anchorNodes n (Xml.elementNodes e)
 
