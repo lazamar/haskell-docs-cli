@@ -219,7 +219,8 @@ innerText :: Xml.Element -> Text
 innerText el = flip foldMap (Xml.elementNodes el) $ \case
   Xml.NodeElement e -> innerText e
   Xml.NodeInstruction _ -> mempty
-  Xml.NodeContent txt -> txt
+  -- TODO make this more performant
+  Xml.NodeContent txt -> Text.pack $ unescapeHTML $ Text.unpack txt
   Xml.NodeComment _ -> mempty
 
 anchors :: Xml.Element -> [Anchor]
@@ -385,9 +386,27 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
 -- number of SourceLink
 fileInfo :: SourceLink -> HtmlPage -> FileInfo
 fileInfo s@(SourceLink url anchor) (HtmlPage root) = pageContent "fileInfo" s $ do
-  body <- filter (is "body" . tag) $ children root
+  body <- fmap removeAnnotations . filter (is "body" . tag) $ children root
   return $ FileInfo filename (anchorLine anchor body) (innerText body)
   where
+    removeAnnotations :: Xml.Element -> Xml.Element
+    removeAnnotations el = el
+      { Xml.elementNodes = foldr go [] (Xml.elementNodes el)
+      }
+      where
+        go :: Xml.Node -> [Xml.Node] -> [Xml.Node]
+        go = \case
+          Xml.NodeInstruction _ -> id
+          Xml.NodeContent txt   -> (Xml.NodeContent txt :)
+          Xml.NodeComment _     -> id
+          Xml.NodeElement e
+            | isAnnotation e -> id
+            | otherwise      -> (Xml.NodeElement (removeAnnotations e) :)
+
+        -- Annotations provide hover information in the browser.
+        -- It is not useful in the command-line
+        isAnnotation e = class_ e == "annottext"
+
     filename
       = (<> ".hs")
       $ map (\c -> if c == '/' then '-' else c)
