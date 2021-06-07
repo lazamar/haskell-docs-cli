@@ -73,6 +73,7 @@ data Package = Package
   { pTitle       :: String
   , pSubTitle    :: Maybe String
   , pDescription :: Html
+  , pReadme      :: Maybe Html
   , pProperties  :: [(String, Html)]
   , pModules     :: [String]
   , pUrl         :: PackageUrl
@@ -150,6 +151,9 @@ parsePackageDocs url (HtmlPage root) = pageContent "packageDocs" url $ do
   moduleList  <- findM (is "modules" . id_) (children content)
     >>= findM (is "module-list" . id_) . children
   let
+    readme = findM (is "readme-container" . id_) (children content)
+        >>= findM (is "embedded-author-content" . class_) . children
+
     subTitle = findM (is "small" . tag) (children heading)
 
     properties = do
@@ -169,6 +173,7 @@ parsePackageDocs url (HtmlPage root) = pageContent "packageDocs" url $ do
     { pTitle = Text.unpack $ innerText title
     , pSubTitle = Text.unpack . innerText <$> subTitle
     , pDescription = Html description
+    , pReadme = Html <$> readme
     , pProperties = properties
     , pModules = Text.unpack <$> modules
     , pUrl = url
