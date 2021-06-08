@@ -17,7 +17,7 @@ module HoogleCli
 
 import Prelude hiding (mod)
 import Control.Applicative ((<|>))
-import Control.Exception (finally)
+import Control.Exception (finally, throwIO)
 import Control.Monad (unless, void)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Except (ExceptT(..), MonadError, catchError, runExceptT, throwError)
@@ -626,19 +626,29 @@ viewInTerminalPaged :: MonadIO m => P.Doc -> m ()
 viewInTerminalPaged doc = withPager $ \handle -> printDoc handle doc
 
 withPager :: MonadIO m => (Handle -> IO ())  -> m ()
-withPager act = liftIO $ do
-  mvar <- MVar.newEmptyMVar
-  Async.withAsync (createPager mvar) $ \pager -> do
-    handle <- MVar.readMVar mvar
-    act handle `finally` putStrLn "act error"
-    void $ Async.waitCatch pager `finally` putStrLn "waitCatch error"
+withPager act = liftIO $
+  MVar.newEmptyMVar >>= \mvar ->
+  Async.withAsync (runPager mvar) $ \pager ->
+  Async.withAsync (runAction mvar) $ \action -> do
+    res <- Async.waitEitherCatch pager action
+    case res of
+      -- pager finished first. Action aborted.
+      Left (Right _) -> return ()
+      Left (Left err) -> throwIO err
+      -- action finished first. Wait for pager.
+      Right (Right _) -> void $ Async.waitCatch pager
+      Right (Left err) -> throwIO err
   where
     cmd = (Process.proc "less" ["-iFRX"]) { Process.std_in = Process.CreatePipe }
-    createPager mvar =
+    runAction mvar = do
+      handle <- MVar.readMVar mvar
+      act handle `finally` hClose handle
+
+    runPager mvar =
       Process.withCreateProcess cmd
-         $ \(Just hin) _ _ p ->
-           (do MVar.putMVar mvar hin; Process.waitForProcess p)
-           `finally` hClose hin `finally` putStrLn "hclose error"
+         $ \(Just hin) _ _ p -> do
+           MVar.putMVar mvar hin
+           Process.waitForProcess p
 
 -- | Maximum screen width for flowing text.
 -- Fixed-width portions will still overflow that.
