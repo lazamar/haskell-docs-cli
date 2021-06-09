@@ -2,6 +2,9 @@
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE GeneralisedNewtypeDeriving #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# OPTIONS_GHC -Wwarn #-}
 module HoogleCli
   ( interactive
   , evaluate
@@ -23,7 +26,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Except (ExceptT(..), MonadError, catchError, runExceptT, throwError)
 import Control.Monad.Catch (MonadThrow)
 import Control.Concurrent.MVar (MVar)
-import Control.Monad.State.Lazy (MonadState, StateT)
+import Control.Monad.State.Lazy (MonadState, StateT(..))
 import Data.Foldable (toList)
 import Data.Function (on)
 import Data.Functor ((<&>))
@@ -107,22 +110,24 @@ data Selection
 
 data View =  Interface | Documentation
 
-newtype M a = M { runM :: ExceptT String (StateT ShellState (CLI.InputT IO)) a }
+newtype M a = M { runM :: ExceptT String (CLI.InputT (StateT ShellState IO)) a }
   deriving newtype
     ( Functor
     , Applicative
     , Monad
-    , MonadState ShellState
     , MonadError String
     , MonadIO
     , MonadThrow
     , MonadFail
     )
 
-runCLI :: CLI.Settings IO -> ShellState -> M a -> IO (Either String a)
+instance MonadState ShellState M where
+  state f = M $ lift $ lift $ State.state f
+
+runCLI :: CLI.Settings (StateT ShellState IO) -> ShellState -> M a -> IO (Either String a)
 runCLI settings state
-  = CLI.runInputT settings
-  . flip State.evalStateT state
+  = flip State.evalStateT state
+  . CLI.runInputT settings
   . runExceptT
   . runM
 
@@ -130,7 +135,7 @@ class MonadCLI m where
   getInputLine :: String -> m (Maybe String)
 
 instance MonadCLI M where
-  getInputLine str = M $ lift $ lift $ CLI.getInputLine str
+  getInputLine str = M $ lift $ CLI.getInputLine str
 
 runSearch :: String -> M [Hoogle.Item]
 runSearch term = do
@@ -202,13 +207,17 @@ commands =
   [ "documentation"
   , "interface"
   , "src"
+
   , "declaration"
+
   , "module"
   , "mdocumentation"
   , "minterface"
+
   , "package"
   , "pdocumentation"
   , "pinterface"
+
   , "quit"
   ]
 
