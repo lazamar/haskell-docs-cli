@@ -18,7 +18,6 @@ import Control.Monad (void)
 import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
 import qualified Network.HTTP.Client as Http
 import qualified Options.Applicative as O
-import qualified System.Console.Haskeline as CLI
 
 newtype Options = Options
   { arguments :: String
@@ -42,7 +41,7 @@ main = void $ do
         , sManager = manager
         , sCache = mempty
         }
-  runCLI CLI.defaultSettings state $
+  runCLI state $
     case arguments of
       ""    -> interactive
       input -> evaluate input
@@ -56,5 +55,5 @@ main' = void $ do
         , sManager = manager
         , sCache = mempty
         }
-  runCLI CLI.defaultSettings state $ do
+  runCLI state $ do
     evaluateCmd (ViewModule Documentation $ Search "Data.Set")

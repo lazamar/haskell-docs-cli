@@ -50,6 +50,10 @@ default-extensions:
 - TupleSections
 - LambdaCase
 - FlexibleInstances
+- MultiWayIf
+- GeneralisedNewtypeDeriving
+- DerivingStrategies
+- MultiParamTypeClasses
 
 library:
   source-dirs: src

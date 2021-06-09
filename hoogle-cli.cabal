@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 38e7a70ee6fa299a0ae8d0493173906fd6c3870d2c0ef4794a1e008937fdbc1a
+-- hash: 067ecca0c5761d6466bd2c05f8beacc51849ef93fbae8c9cc8332e7ed3bfaa5a
 
 name:           hoogle-cli
 version:        0.1.0.0
@@ -35,7 +35,7 @@ library
       Paths_hoogle_cli
   hs-source-dirs:
       src
-  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances
+  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses
   build-depends:
       aeson
     , ansi-wl-pprint
@@ -67,7 +67,7 @@ executable hoogle-cli-exe
       Paths_hoogle_cli
   hs-source-dirs:
       app
-  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances
+  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
   build-depends:
       aeson
@@ -102,7 +102,7 @@ test-suite hoogle-cli-test
       Paths_hoogle_cli
   hs-source-dirs:
       test
-  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances
+  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       aeson

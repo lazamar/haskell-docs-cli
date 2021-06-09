@@ -1,9 +1,4 @@
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE GeneralisedNewtypeDeriving #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PartialTypeSignatures #-}
 {-# OPTIONS_GHC -Wwarn #-}
 module HoogleCli
   ( interactive
@@ -124,12 +119,29 @@ newtype M a = M { runM :: ExceptT String (CLI.InputT (StateT ShellState IO)) a }
 instance MonadState ShellState M where
   state f = M $ lift $ lift $ State.state f
 
-runCLI :: CLI.Settings (StateT ShellState IO) -> ShellState -> M a -> IO (Either String a)
-runCLI settings state
+runCLI :: ShellState -> M a -> IO (Either String a)
+runCLI state
   = flip State.evalStateT state
-  . CLI.runInputT settings
+  . CLI.runInputT cliSettings
   . runExceptT
   . runM
+
+cliSettings :: CLI.Settings (StateT ShellState IO)
+cliSettings = (CLI.defaultSettings :: CLI.Settings (StateT ShellState IO))
+  { CLI.complete = completion }
+
+completion :: CLI.CompletionFunc (StateT ShellState IO)
+completion (left', _) = do
+  let left = reverse left'
+  case left of
+    ':':xs
+      | not (any isSpace xs)
+      , Just cmd <- fillPrefix xs
+      -> return (":", [CLI.simpleCompletion cmd])
+    _ -> return (left', [])
+
+  --context <- State.gets sContext
+
 
 class MonadCLI m where
   getInputLine :: String -> m (Maybe String)
