@@ -7,7 +7,7 @@ import Data.Maybe (fromMaybe)
 import Data.Aeson (FromJSON(..))
 
 import HoogleCli.Types
-import HoogleCli.Haddock (Html, parseHoogleHtml)
+import HoogleCli.Haddock (Html, parseHoogleHtml, HasCompletion(..), innerString)
 import qualified Hoogle
 
 data Item
@@ -15,6 +15,12 @@ data Item
   | Module Module
   | Package Package
   deriving (Eq)
+
+instance HasCompletion Item where
+  completion = \case
+   Declaration d -> dCompletion d
+   Module m      -> mTitle m
+   Package p     -> pTitle p
 
 instance FromJSON Item where
   parseJSON = fmap fromHoogleTarget . parseJSON
@@ -27,21 +33,27 @@ fromHoogleTarget target =
           (pkg, pkgUrl) = fromMaybe
             (error "Hoogle module without package info")
             (Hoogle.targetPackage target)
+
+          desc = parseHoogleHtml $ Hoogle.targetItem target
       in
       Module $ Module_
         { mUrl         = ModuleUrl $ Hoogle.targetURL target
         , mPackageUrl  = PackageUrl pkgUrl
         , mPackage     = pkg
-        , mDescription = parseHoogleHtml $ Hoogle.targetItem target
+        , mDescription = desc
         , mDocs        = parseHoogleHtml $ Hoogle.targetDocs target
         , mTarget      = target
+        , mTitle       = innerString desc
         }
     "package" ->
+      let desc = parseHoogleHtml $ Hoogle.targetItem target
+      in
       Package $ Package_
         { pUrl         = PackageUrl $ Hoogle.targetURL target
-        , pDescription = parseHoogleHtml $ Hoogle.targetItem target
+        , pDescription = desc
         , pDocs        = parseHoogleHtml $ Hoogle.targetDocs target
         , pTarget      = target
+        , pTitle       = innerString desc
         }
     _ ->
       let
@@ -58,6 +70,7 @@ fromHoogleTarget target =
             (takeAnchor $ Hoogle.targetURL target)
 
           moduleUrl = ModuleUrl modUrl
+          desc = parseHoogleHtml $ Hoogle.targetItem target
       in
       Declaration $ Declaration_
         { dUrl         = DeclUrl moduleUrl anchor
@@ -65,8 +78,9 @@ fromHoogleTarget target =
         , dPackageUrl  = PackageUrl pkgUrl
         , dModule      = mod
         , dModuleUrl   = moduleUrl
-        , dDescription = parseHoogleHtml $ Hoogle.targetItem target
+        , dDescription = desc
         , dDocs        = parseHoogleHtml $ Hoogle.targetDocs target
+        , dCompletion  = innerString desc
         , dTarget      = target
         }
 
@@ -79,6 +93,7 @@ data Declaration = Declaration_
   , dDescription :: Html
   , dDocs        :: Html
   , dTarget      :: Hoogle.Target
+  , dCompletion  :: String
   }
   deriving (Eq)
 
@@ -89,6 +104,7 @@ data Module = Module_
   , mDescription :: Html
   , mDocs        :: Html
   , mTarget      :: Hoogle.Target
+  , mTitle       :: String
   }
   deriving (Eq)
 
@@ -97,6 +113,7 @@ data Package = Package_
   , pDescription :: Html
   , pDocs        :: Html
   , pTarget      :: Hoogle.Target
+  , pTitle       :: String
   }
   deriving (Eq)
 

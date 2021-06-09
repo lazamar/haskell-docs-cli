@@ -83,20 +83,13 @@ type Index = Int
 
 -- | Commands we accept
 data Cmd
-  = ViewAny View Selection           -- ^ by default we do a Hoogle search or
-                                     -- view/index the current context
-  | ViewSource Selection             -- ^ source for target
+  = ViewAny View Selection
+  -- ^ by default we do a Hoogle search or view/index the current context
+  | ViewDeclarationSource Selection
   | ViewDeclaration Selection
   | ViewModule View Selection
   | ViewPackage View Selection
   | Quit
-
--- data Cmd
---   = ViewAny View Selection
---   | ViewDeclaration View Selection
---   | ViewPackage View Selection
---   | ViewModule View Selection
---   | Quit
 
 data Selection
   = Search String
@@ -128,19 +121,34 @@ runCLI state
 
 cliSettings :: CLI.Settings (StateT ShellState IO)
 cliSettings = (CLI.defaultSettings :: CLI.Settings (StateT ShellState IO))
-  { CLI.complete = completion }
+  { CLI.complete = complete }
 
-completion :: CLI.CompletionFunc (StateT ShellState IO)
-completion (left', _) = do
+complete :: CLI.CompletionFunc (StateT ShellState IO)
+complete (left', _) = do
   let left = reverse left'
   case left of
-    ':':xs
-      | not (any isSpace xs)
-      , Just cmd <- fillPrefix xs
-      -> return (":", [CLI.simpleCompletion cmd])
+    ':':xs | not (any isSpace xs) , Just cmd <- fillPrefix xs ->
+      return (":", [CLI.simpleCompletion cmd])
+    '/':xs -> do
+        context <- State.gets sContext
+        let prefixes = case context of
+              ContextEmpty -> []
+              ContextSearch _ tgroups -> map (completion . NonEmpty.head) tgroups
+              ContextModule m -> map completion (mDeclarations m)
+              ContextPackage p -> pModules p
+        return
+          ( left'
+          , [ CLI.Completion
+              { CLI.replacement = drop (length xs) option
+              , CLI.display = option
+              , CLI.isFinished = True
+              }
+            | option <- prefixes
+            , xs `isPrefixOf` option
+            ]
+          )
     _ -> return (left', [])
 
-  --context <- State.gets sContext
 
 
 class MonadCLI m where
@@ -250,7 +258,7 @@ parseCommand str = case str of
       -- any
       "documentation"  -> ViewAny Documentation selection
       "interface"      -> ViewAny Interface selection
-      "src"            -> ViewSource selection
+      "src"            -> ViewDeclarationSource selection
       -- declaration
       "declaration"    -> ViewDeclaration selection
       -- module
@@ -360,15 +368,15 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
         withModuleFromPackage ix package viewModuleDocs
 
   -- :src
-  ViewSource SelectContext ->
+  ViewDeclarationSource SelectContext ->
     throwError "no declaration selected. Use ':src INT'"
 
   -- :src <TERM>
-  ViewSource (Search term) ->
+  ViewDeclarationSource (Search term) ->
     withFirstSearchResult declResult term (viewSource . Hoogle.dUrl)
 
   -- :src <INDEX>
-  ViewSource (ItemIndex ix) ->
+  ViewDeclarationSource (ItemIndex ix) ->
     case context of
       ContextEmpty ->
         errEmptyContext

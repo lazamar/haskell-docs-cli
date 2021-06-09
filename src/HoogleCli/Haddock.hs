@@ -12,11 +12,15 @@ module HoogleCli.Haddock
   , parseHtmlDocument
   , parseModuleDocs
   , parsePackageDocs
+  , sourceLinks
+  , fileInfo
+  , HasCompletion(..)
+
+  -- general html utils
+  , innerString
   , prettyHtml
   , numbered
   , parseHoogleHtml
-  , sourceLinks
-  , fileInfo
   )
   where
 
@@ -54,19 +58,21 @@ newtype HtmlPage = HtmlPage Xml.Element
 
 -- | An exported declaration
 data Declaration = Declaration
-  { dAnchors   :: Set Anchor
-  , dAnchor    :: Anchor -- ^ Main declaration anchor
-  , dSignature :: Html
-  , dContent   :: [Html]
-  , dModuleUrl :: ModuleUrl
-  , dDeclUrl   :: DeclUrl
+  { dAnchors    :: Set Anchor
+  , dAnchor     :: Anchor -- ^ Main declaration anchor
+  , dSignature  :: Html
+  , dContent    :: [Html]
+  , dModuleUrl  :: ModuleUrl
+  , dDeclUrl    :: DeclUrl
+  , dCompletion :: String
+  -- ^ string to be used when selecting this declaration with tab completion
   }
 
 data Module = Module
-  { mTitle :: String
-  , mDescription :: Maybe Html
+  { mTitle        :: String
+  , mDescription  :: Maybe Html
   , mDeclarations :: [Declaration]
-  , mUrl :: ModuleUrl
+  , mUrl          :: ModuleUrl
   }
 
 data Package = Package
@@ -78,6 +84,19 @@ data Package = Package
   , pModules     :: [String]
   , pUrl         :: PackageUrl
   }
+
+-- | Types that can be selected with tab completion
+class HasCompletion a where
+  completion :: a -> String
+
+instance HasCompletion Declaration where
+  completion = dCompletion
+
+instance HasCompletion Module where
+  completion = mTitle
+
+instance HasCompletion Package where
+  completion = pTitle
 
 parseHtmlDocument :: ByteString -> HtmlPage
 parseHtmlDocument = HtmlPage . Xml.documentRoot . Html.parseLBS
@@ -110,8 +129,9 @@ parseModuleDocs murl (HtmlPage root) = pageContent "moduleDocs" murl $ do
         findM (is "caption" . class_) (children h)
       mdescription = findM (is "description" . id_) (children content)
   interface <- findM (is "interface" . id_) (children content)
+  let title = Text.unpack $ maybe "" innerText mtitle
   return Module
-    { mTitle = Text.unpack $ maybe "" innerText mtitle
+    { mTitle = title
     , mDescription = Html <$> mdescription
     , mDeclarations = mapMaybe (parseDeclaration murl . Html) $ children interface
     , mUrl = murl
@@ -126,14 +146,16 @@ parseDeclaration moduleUrl (Html el) = do
   let anchor = case listToMaybe $ anchors sig of
         Nothing -> error "declaration with no anchor in signature"
         Just a  -> a
+      signature = asTag "div" sig
 
   return Declaration
     { dAnchors = Set.fromList $ anchors el
     , dAnchor = anchor
-    , dSignature = Html $ asTag "div" sig
+    , dSignature = Html signature
     , dContent = Html <$> content
     , dModuleUrl = moduleUrl
     , dDeclUrl = DeclUrl moduleUrl anchor
+    , dCompletion = Text.unpack $ innerText signature
     }
   where
     asTag t e = e
@@ -220,6 +242,9 @@ attr name =
   . Map.lookup (Xml.Name name Nothing Nothing)
   . Xml.elementAttributes
 
+innerString :: Html -> String
+innerString (Html el) = Text.unpack (innerText el)
+
 innerText :: Xml.Element -> Text
 innerText el = flip foldMap (Xml.elementNodes el) $ \case
   Xml.NodeElement e -> innerText e
@@ -258,7 +283,6 @@ sourceLinks (ModuleUrl murl) (HtmlPage root) = do
     parent = reverse . tail . dropWhile (/= '/') . reverse
 
     toSourceUrl relativeUrl = parent murl <> "/" <> Text.unpack relativeUrl
-
 
 -- ================================
 -- Displaying Haddock's Html
