@@ -322,19 +322,19 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
       ContextEmpty ->
         errEmptyContext
       ContextSearch _ results ->
-        withTargetGroupIx ix results viewTargetGroup
+        withIx ix results viewTargetGroup
       ContextModule mod -> do
-        elemAt ix (mDeclarations mod) >>= viewDeclarationWithLink
+        withIx ix (mDeclarations mod) viewDeclarationWithLink
       ContextPackage package ->
         withModuleFromPackageIx ix package viewModuleInterface
 
   -- /<PREFIX>
-  ViewAny Interface (SelectByPrefix prefix) ->
+  ViewAny Interface (SelectByPrefix pre) ->
     case context of
       ContextEmpty       -> errEmptyContext
-      ContextSearch _ xs -> matchingPrefix prefix xs viewTargetGroup
-      ContextModule m    -> matchingPrefix prefix (mDeclarations m) viewDeclarationWithLink
-      ContextPackage p   -> matchingPrefix prefix (pModules p) $ \m ->
+      ContextSearch _ xs -> withPrefix pre xs viewTargetGroup
+      ContextModule m    -> withPrefix pre (mDeclarations m) viewDeclarationWithLink
+      ContextPackage p   -> withPrefix pre (pModules p) $ \m ->
           withModuleFromPackage m p viewModuleInterface
 
   -- :documentation
@@ -354,17 +354,17 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
   ViewAny Documentation (SelectByIndex ix) ->
     case context of
       ContextEmpty       -> errEmptyContext
-      ContextSearch _ xs -> withTargetGroupIx ix xs targetGroupDocumentation
+      ContextSearch _ xs -> withIx ix xs targetGroupDocumentation
       ContextModule m    -> withDeclFromModuleIx ix m viewDeclaration
       ContextPackage p   -> withModuleFromPackageIx ix p viewModuleDocs
 
   -- :documentation /<PREFIX>
-  ViewAny Documentation (SelectByPrefix prefix) ->
+  ViewAny Documentation (SelectByPrefix pre) ->
     case context of
       ContextEmpty       -> errEmptyContext
-      ContextSearch _ xs -> matchingPrefix prefix xs targetGroupDocumentation
-      ContextModule m    -> matchingPrefix prefix (mDeclarations m) viewDeclaration
-      ContextPackage p   -> matchingPrefix prefix (pModules p) $ \m ->
+      ContextSearch _ xs -> withPrefix pre xs targetGroupDocumentation
+      ContextModule m    -> withPrefix pre (mDeclarations m) viewDeclaration
+      ContextPackage p   -> withPrefix pre (pModules p) $ \m ->
           withModuleFromPackage m p viewModuleDocs
   -- :src
   ViewDeclarationSource SelectContext ->
@@ -378,18 +378,18 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
   ViewDeclarationSource (SelectByIndex ix) ->
     case context of
       ContextEmpty       -> errEmptyContext
-      ContextSearch _ xs -> withTargetGroupIx ix xs $
+      ContextSearch _ xs -> withIx ix xs $
           maybe errNoSourceAvailable (viewSource . Hoogle.dUrl) . toDecl . NonEmpty.head
       ContextModule m    -> withDeclFromModuleIx ix m (viewSource . declUrl)
       ContextPackage _   -> errSourceOnlyForDeclarations
 
   -- :src <INDEX>
-  ViewDeclarationSource (SelectByPrefix prefix) ->
+  ViewDeclarationSource (SelectByPrefix pre) ->
     case context of
       ContextEmpty       -> errEmptyContext
-      ContextSearch _ xs -> matchingPrefix prefix xs $
+      ContextSearch _ xs -> withPrefix pre xs $
           maybe errNoSourceAvailable (viewSource . Hoogle.dUrl) . toDecl . NonEmpty.head
-      ContextModule m    -> matchingPrefix prefix (mDeclarations m) (viewSource . declUrl)
+      ContextModule m    -> withPrefix pre (mDeclarations m) (viewSource . declUrl)
       ContextPackage _   -> errSourceOnlyForDeclarations
 
   -- :declaration
@@ -405,18 +405,16 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
   ViewDeclaration (SelectByIndex ix) ->
     case context of
       ContextEmpty       -> errEmptyContext
-      ContextSearch _ xs -> withTargetGroupIx ix xs $ \tgroup ->
-        viewInTerminalPaged $ viewDescription $ NonEmpty.head tgroup
+      ContextSearch _ xs -> withIx ix xs $ viewInTerminalPaged . viewDescription . NonEmpty.head
       ContextModule m    -> withDeclFromModuleIx ix m viewDeclaration
       ContextPackage _   -> errNotDeclarationButModule
 
   -- :declaration /<prefix>
-  ViewDeclaration (SelectByPrefix prefix) ->
+  ViewDeclaration (SelectByPrefix pre) ->
     case context of
       ContextEmpty       -> errEmptyContext
-      ContextSearch _ xs -> matchingPrefix prefix xs $ \tgroup ->
-        viewInTerminalPaged $ viewDescription $ NonEmpty.head tgroup
-      ContextModule m    -> matchingPrefix prefix (mDeclarations m) viewDeclaration
+      ContextSearch _ xs -> withPrefix pre xs $ viewInTerminalPaged . viewDescription . NonEmpty.head
+      ContextModule m    -> withPrefix pre (mDeclarations m) viewDeclaration
       ContextPackage _   -> errNotDeclarationButModule
 
   -- :minterface
@@ -438,19 +436,18 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
   ViewModule view (SelectByIndex ix) ->
     case context of
       ContextEmpty       -> errEmptyContext
-      ContextSearch _ xs -> withModuleForIndex ix xs (viewModule view)
+      ContextSearch _ xs -> withIx ix xs $ withModuleForTargetGroup $ viewModule view
       ContextModule m    -> viewModule view m
       ContextPackage p   -> withModuleFromPackageIx ix p (viewModule view)
 
   -- :minterface /<PREFIX>
   -- :mdocumentation /<PREFIX>
-  ViewModule view (SelectByPrefix prefix) ->
+  ViewModule view (SelectByPrefix pre) ->
     case context of
       ContextEmpty       -> errEmptyContext
-      ContextSearch _ xs -> matchingPrefix prefix xs $ \tgroup ->
-        withModuleForTargetGroup tgroup (viewModule view)
+      ContextSearch _ xs -> withPrefix pre xs $ withModuleForTargetGroup $ viewModule view
       ContextModule m    -> viewModule view m
-      ContextPackage p   -> matchingPrefix prefix (pModules p) $ \mod ->
+      ContextPackage p   -> withPrefix pre (pModules p) $ \mod ->
         withModuleFromPackage mod p (viewModule view)
 
   -- :pinterface
@@ -477,17 +474,16 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
   ViewPackage view (SelectByIndex ix) ->
     case context of
       ContextEmpty       -> errEmptyContext
-      ContextSearch _ xs -> withPackageForIndex ix xs (viewPackage view)
+      ContextSearch _ xs -> withIx ix xs $ withPackageForTargetGroup (viewPackage view)
       ContextModule m    -> withPackageForModule m (viewPackage view)
       ContextPackage p   -> viewPackage view p
 
   -- :pinterface /<PREFIX>
   -- :pdocumentation /<PREFIX>
-  ViewPackage view (SelectByPrefix prefix) ->
+  ViewPackage view (SelectByPrefix pre) ->
     case context of
       ContextEmpty       -> errEmptyContext
-      ContextSearch _ xs -> matchingPrefix prefix xs $ \tgroup ->
-        withPackageForTargetGroup tgroup (viewPackage view)
+      ContextSearch _ xs -> withPrefix pre xs $ withPackageForTargetGroup $ viewPackage view
       ContextModule m    -> withPackageForModule m (viewPackage view)
       ContextPackage p   -> viewPackage view p
 
@@ -554,15 +550,22 @@ withPackageForModule mod act = do
   State.modify' $ \s -> s{ sContext = ContextPackage package }
   act package
 
--- | Get an element from a one-indexed index
-elemAt :: Int -> [a] -> M a
-elemAt ix =
-  maybe (throwError "index out of range") return
-  . listToMaybe
-  . drop (ix - 1)
+-- | Get an element matching a prefix
+withPrefix :: HasCompletion a => String -> [a] -> (a -> M b) -> M b
+withPrefix prefix values act =
+  case find ((prefix `isPrefixOf`) . completion) values of
+    Nothing -> throwError "No item matching prefix"
+    Just res -> act res
 
-withPackageForTargetGroup :: TargetGroup -> (Package -> M a) -> M a
-withPackageForTargetGroup tgroup act = do
+-- | Get an element from a one-indexed index
+withIx :: Int -> [a] -> (a -> M b) -> M b
+withIx ix xs act =
+  maybe (throwError "index out of range") act
+  $ listToMaybe
+  $ drop (ix - 1) xs
+
+withPackageForTargetGroup :: (Package -> M a) -> TargetGroup -> M a
+withPackageForTargetGroup act tgroup = do
   purl <- selectPackage tgroup
   withPackage purl act
   where
@@ -580,13 +583,8 @@ withPackageForTargetGroup tgroup act = do
       Hoogle.Declaration d -> (Hoogle.dPackageUrl d,) <$> viewItemPackage x
       Hoogle.Package p     -> (Hoogle.pUrl p,)        <$> viewItemPackage x
 
-withPackageForIndex :: Int -> [TargetGroup] -> (Package -> M a) -> M a
-withPackageForIndex ix results act = do
-  tgroup <- elemAt ix results
-  withPackageForTargetGroup tgroup act
-
-withModuleForTargetGroup :: TargetGroup -> (Module -> M a) -> M a
-withModuleForTargetGroup tgroup act = do
+withModuleForTargetGroup :: (Module -> M a) -> TargetGroup -> M a
+withModuleForTargetGroup act tgroup = do
   murl <- selectModule tgroup
   withModule murl act
   where
@@ -606,11 +604,6 @@ withModuleForTargetGroup tgroup act = do
       Hoogle.Package _ ->
         Nothing
 
-withModuleForIndex :: Int -> [TargetGroup] -> (Module -> M a) -> M a
-withModuleForIndex ix results act = do
-  tgroup <- elemAt ix results
-  withModuleForTargetGroup tgroup act
-
 promptSelectOne :: NonEmpty (a, P.Doc) -> M a
 promptSelectOne nonEmptyXs
   | [(x,_)] <- toList nonEmptyXs = return x
@@ -628,17 +621,6 @@ promptSelectOne nonEmptyXs
         liftIO $ putStrLn "Number not recognised"
         promptSelectOne nonEmptyXs
 
-matchingPrefix :: HasCompletion a => String -> [a] -> (a -> M b) -> M b
-matchingPrefix prefix values act =
-  case find ((prefix `isPrefixOf`) . completion) values of
-    Nothing -> throwError "No item matching prefix"
-    Just res -> act res
-
-withTargetGroupIx :: Int -> [TargetGroup] -> (TargetGroup -> M a) -> M a
-withTargetGroupIx ix groups act = do
-  tgroup <- elemAt ix groups
-  act tgroup
-
 withModuleFromPackage :: String -> Package -> (Module -> M a) -> M a
 withModuleFromPackage modName Package{..} act = do
   let url = packageModuleUrl pUrl modName
@@ -649,12 +631,10 @@ withModuleFromPackage modName Package{..} act = do
 
 withModuleFromPackageIx :: Int -> Package -> (Module -> M a) -> M a
 withModuleFromPackageIx ix p act =
-  elemAt ix (pModules p) >>= \m -> withModuleFromPackage m p act
+  withIx ix (pModules p) $ \m -> withModuleFromPackage m p act
 
 withDeclFromModuleIx :: Int -> Module -> (Declaration -> M a) -> M a
-withDeclFromModuleIx ix mod act = do
-  decl <- elemAt ix (mDeclarations mod)
-  act decl
+withDeclFromModuleIx ix = withIx ix . mDeclarations
 
 viewSearchResults :: MonadIO m => [TargetGroup] -> m ()
 viewSearchResults
