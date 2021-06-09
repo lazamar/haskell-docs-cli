@@ -127,27 +127,30 @@ cliSettings = (CLI.defaultSettings :: CLI.Settings (StateT ShellState IO))
 complete :: CLI.CompletionFunc (StateT ShellState IO)
 complete (left', _) = do
   let left = reverse left'
+  context <- State.gets sContext
+  let prefixes = case context of
+        ContextEmpty -> []
+        ContextSearch _ tgroups -> map (completion . NonEmpty.head) tgroups
+        ContextModule m -> map completion (mDeclarations m)
+        ContextPackage p -> pModules p
+
+      completionsFor prefix =
+        [ CLI.Completion
+          { CLI.replacement = drop (length prefix) option
+          , CLI.display = option
+          , CLI.isFinished = True
+          }
+        | option <- prefixes
+        , prefix `isPrefixOf` option
+        ]
+
   case left of
     ':':xs | not (any isSpace xs) , Just cmd <- fillPrefix xs ->
       return (":", [CLI.simpleCompletion cmd])
-    '/':xs -> do
-        context <- State.gets sContext
-        let prefixes = case context of
-              ContextEmpty -> []
-              ContextSearch _ tgroups -> map (completion . NonEmpty.head) tgroups
-              ContextModule m -> map completion (mDeclarations m)
-              ContextPackage p -> pModules p
-        return
-          ( left'
-          , [ CLI.Completion
-              { CLI.replacement = drop (length xs) option
-              , CLI.display = option
-              , CLI.isFinished = True
-              }
-            | option <- prefixes
-            , xs `isPrefixOf` option
-            ]
-          )
+    ':':xs | (_, ' ':'/':prefix) <- break isSpace xs ->
+      return (left', completionsFor prefix)
+    '/':xs ->
+      return (left', completionsFor xs)
     _ -> return (left', [])
 
 
@@ -274,6 +277,7 @@ parseCommand str = case str of
       "quit"           -> Quit
       _ -> error $ "Unknown command: " <> cmd
   -- no colon cases
+  ('/':prefix)              -> Right $ ViewAny Interface $ SelectByPrefix prefix
   x | Just n <- readMaybe x -> Right $ ViewAny Interface $ SelectByIndex n
   []                        -> Right $ ViewAny Interface SelectContext
   _                         -> Right $ ViewAny Interface $ Search str
@@ -552,7 +556,9 @@ withPackageForModule mod act = do
 
 -- | Get an element matching a prefix
 withPrefix :: HasCompletion a => String -> [a] -> (a -> M b) -> M b
-withPrefix prefix values act =
+withPrefix pre values act =
+  let prefix = reverse $ dropWhile isSpace $ reverse pre
+  in
   case find ((prefix `isPrefixOf`) . completion) values of
     Nothing -> throwError "No item matching prefix"
     Just res -> act res
