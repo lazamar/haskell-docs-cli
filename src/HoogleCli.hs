@@ -92,9 +92,10 @@ data Cmd
   | Quit
 
 data Selection
-  = Search String
-  | ItemIndex Index
-  | SelectContext
+  = SelectContext
+  | SelectByIndex Index
+  | SelectByPrefix String
+  | Search String
 
 data View =  Interface | Documentation
 
@@ -251,7 +252,8 @@ parseCommand str = case str of
     cmd <- maybe (Left "Unknown command") Right mcmd
     let selection
           | null args                = SelectContext
-          | Just n <- readMaybe args = ItemIndex n
+          | ('/':prefix) <- args     = SelectByPrefix prefix
+          | Just n <- readMaybe args = SelectByIndex n
           | otherwise                = Search args
 
     Right $ case cmd of
@@ -272,7 +274,7 @@ parseCommand str = case str of
       "quit"           -> Quit
       _ -> error $ "Unknown command: " <> cmd
   -- no colon cases
-  x | Just n <- readMaybe x -> Right $ ViewAny Interface $ ItemIndex n
+  x | Just n <- readMaybe x -> Right $ ViewAny Interface $ SelectByIndex n
   []                        -> Right $ ViewAny Interface SelectContext
   _                         -> Right $ ViewAny Interface $ Search str
 
@@ -315,20 +317,25 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
     State.modify' $ \s -> s{ sContext = ContextSearch term res }
 
   -- <INDEX>
-  ViewAny Interface (ItemIndex ix) ->
+  ViewAny Interface (SelectByIndex ix) ->
     case context of
-      ContextEmpty -> errEmptyContext
+      ContextEmpty ->
+        errEmptyContext
       ContextSearch _ results ->
-        withTargetGroup ix results $ viewInTerminalPaged . viewFull
+        withTargetGroupIx ix results viewTargetGroup
       ContextModule mod -> do
-        decl <- elemAt ix (mDeclarations mod)
-        viewInTerminalPaged $ P.vsep
-          [ prettyDecl decl
-            -- ad-hoc link colour
-          , P.cyan $ P.text $ getUrl (dDeclUrl decl)
-          ]
+        elemAt ix (mDeclarations mod) >>= viewDeclarationWithLink
       ContextPackage package ->
-        withModuleFromPackage ix package viewModuleInterface
+        withModuleFromPackageIx ix package viewModuleInterface
+
+  -- /<PREFIX>
+  ViewAny Interface (SelectByPrefix prefix) ->
+    case context of
+      ContextEmpty       -> errEmptyContext
+      ContextSearch _ xs -> matchingPrefix prefix xs viewTargetGroup
+      ContextModule m    -> matchingPrefix prefix (mDeclarations m) viewDeclarationWithLink
+      ContextPackage p   -> matchingPrefix prefix (pModules p) $ \m ->
+          withModuleFromPackage m p viewModuleInterface
 
   -- :documentation
   ViewAny Documentation SelectContext ->
@@ -344,29 +351,21 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
     withModule (Hoogle.mUrl hmod) viewModuleDocs
 
   -- :documentation <INDEX>
-  ViewAny Documentation (ItemIndex ix) ->
+  ViewAny Documentation (SelectByIndex ix) ->
     case context of
-      ContextEmpty ->
-        errEmptyContext
-      ContextSearch _ results ->
-        withTargetGroup ix results $ \tgroup -> do
-        let item = NonEmpty.head tgroup
-        case item of
-          Hoogle.Module hmod ->
-            withModule (Hoogle.mUrl hmod) viewModuleDocs
-          Hoogle.Package pkg ->
-            withPackage (Hoogle.pUrl pkg) viewPackageDocs
-          Hoogle.Declaration d ->
-            withModule (Hoogle.dModuleUrl d) $ \mod -> do
-            State.modify' $ \ s -> s { sContext =  context }
-            viewInTerminalPaged $ case targetDeclaration d mod of
-              Just decl -> prettyDecl decl
-              Nothing   -> viewDescription item
-      ContextModule mod ->
-        withDeclFromModule ix mod viewDeclaration
-      ContextPackage package ->
-        withModuleFromPackage ix package viewModuleDocs
+      ContextEmpty       -> errEmptyContext
+      ContextSearch _ xs -> withTargetGroupIx ix xs targetGroupDocumentation
+      ContextModule m    -> withDeclFromModuleIx ix m viewDeclaration
+      ContextPackage p   -> withModuleFromPackageIx ix p viewModuleDocs
 
+  -- :documentation /<PREFIX>
+  ViewAny Documentation (SelectByPrefix prefix) ->
+    case context of
+      ContextEmpty       -> errEmptyContext
+      ContextSearch _ xs -> matchingPrefix prefix xs targetGroupDocumentation
+      ContextModule m    -> matchingPrefix prefix (mDeclarations m) viewDeclaration
+      ContextPackage p   -> matchingPrefix prefix (pModules p) $ \m ->
+          withModuleFromPackage m p viewModuleDocs
   -- :src
   ViewDeclarationSource SelectContext ->
     throwError "no declaration selected. Use ':src INT'"
@@ -376,17 +375,22 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
     withFirstSearchResult declResult term (viewSource . Hoogle.dUrl)
 
   -- :src <INDEX>
-  ViewDeclarationSource (ItemIndex ix) ->
+  ViewDeclarationSource (SelectByIndex ix) ->
     case context of
-      ContextEmpty ->
-        errEmptyContext
-      ContextSearch _ results ->
-        withTargetGroup ix results
-          (maybe errNoSourceAvailable (viewSource . Hoogle.dUrl) . toDecl . NonEmpty.head)
-      ContextModule mod ->
-        withDeclFromModule ix mod (viewSource . declUrl)
-      ContextPackage _ ->
-        errSourceOnlyForDeclarations
+      ContextEmpty       -> errEmptyContext
+      ContextSearch _ xs -> withTargetGroupIx ix xs $
+          maybe errNoSourceAvailable (viewSource . Hoogle.dUrl) . toDecl . NonEmpty.head
+      ContextModule m    -> withDeclFromModuleIx ix m (viewSource . declUrl)
+      ContextPackage _   -> errSourceOnlyForDeclarations
+
+  -- :src <INDEX>
+  ViewDeclarationSource (SelectByPrefix prefix) ->
+    case context of
+      ContextEmpty       -> errEmptyContext
+      ContextSearch _ xs -> matchingPrefix prefix xs $
+          maybe errNoSourceAvailable (viewSource . Hoogle.dUrl) . toDecl . NonEmpty.head
+      ContextModule m    -> matchingPrefix prefix (mDeclarations m) (viewSource . declUrl)
+      ContextPackage _   -> errSourceOnlyForDeclarations
 
   -- :declaration
   ViewDeclaration SelectContext ->
@@ -398,17 +402,22 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
     viewInTerminalPaged $ viewDescription (Hoogle.Declaration hdecl)
 
   -- :declaration <INDEX>
-  ViewDeclaration (ItemIndex ix) ->
+  ViewDeclaration (SelectByIndex ix) ->
     case context of
-      ContextEmpty ->
-        errEmptyContext
-      ContextSearch _ results ->
-        withTargetGroup ix results $ \tgroup ->
+      ContextEmpty       -> errEmptyContext
+      ContextSearch _ xs -> withTargetGroupIx ix xs $ \tgroup ->
         viewInTerminalPaged $ viewDescription $ NonEmpty.head tgroup
-      ContextModule mod ->
-        withDeclFromModule ix mod viewDeclaration
-      ContextPackage _ ->
-        throwError "item at index is not a declaration; it is a module."
+      ContextModule m    -> withDeclFromModuleIx ix m viewDeclaration
+      ContextPackage _   -> errNotDeclarationButModule
+
+  -- :declaration /<prefix>
+  ViewDeclaration (SelectByPrefix prefix) ->
+    case context of
+      ContextEmpty       -> errEmptyContext
+      ContextSearch _ xs -> matchingPrefix prefix xs $ \tgroup ->
+        viewInTerminalPaged $ viewDescription $ NonEmpty.head tgroup
+      ContextModule m    -> matchingPrefix prefix (mDeclarations m) viewDeclaration
+      ContextPackage _   -> errNotDeclarationButModule
 
   -- :minterface
   -- :mdocumentation
@@ -426,16 +435,23 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
 
   -- :minterface <INDEX>
   -- :mdocumentation <INDEX>
-  ViewModule view (ItemIndex ix) ->
+  ViewModule view (SelectByIndex ix) ->
     case context of
-      ContextEmpty ->
-        errEmptyContext
-      ContextSearch _ results ->
-        withModuleForIndex ix results (viewModule view)
-      ContextModule mod ->
-        viewModule view mod
-      ContextPackage package ->
-        withModuleFromPackage ix package (viewModule view)
+      ContextEmpty       -> errEmptyContext
+      ContextSearch _ xs -> withModuleForIndex ix xs (viewModule view)
+      ContextModule m    -> viewModule view m
+      ContextPackage p   -> withModuleFromPackageIx ix p (viewModule view)
+
+  -- :minterface /<PREFIX>
+  -- :mdocumentation /<PREFIX>
+  ViewModule view (SelectByPrefix prefix) ->
+    case context of
+      ContextEmpty       -> errEmptyContext
+      ContextSearch _ xs -> matchingPrefix prefix xs $ \tgroup ->
+        withModuleForTargetGroup tgroup (viewModule view)
+      ContextModule m    -> viewModule view m
+      ContextPackage p   -> matchingPrefix prefix (pModules p) $ \mod ->
+        withModuleFromPackage mod p (viewModule view)
 
   -- :pinterface
   -- :pdocumentation
@@ -458,16 +474,38 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
 
   -- :pinterface <INDEX>
   -- :pdocumentation <INDEX>
-  ViewPackage view (ItemIndex ix) ->
+  ViewPackage view (SelectByIndex ix) ->
     case context of
-      ContextEmpty ->
-        errEmptyContext
-      ContextSearch _ results ->
-        withPackageForIndex ix results (viewPackage view)
-      ContextModule mod ->
-        withPackageForModule mod (viewPackage view)
-      ContextPackage package ->
-        viewPackage view package
+      ContextEmpty       -> errEmptyContext
+      ContextSearch _ xs -> withPackageForIndex ix xs (viewPackage view)
+      ContextModule m    -> withPackageForModule m (viewPackage view)
+      ContextPackage p   -> viewPackage view p
+
+  -- :pinterface /<PREFIX>
+  -- :pdocumentation /<PREFIX>
+  ViewPackage view (SelectByPrefix prefix) ->
+    case context of
+      ContextEmpty       -> errEmptyContext
+      ContextSearch _ xs -> matchingPrefix prefix xs $ \tgroup ->
+        withPackageForTargetGroup tgroup (viewPackage view)
+      ContextModule m    -> withPackageForModule m (viewPackage view)
+      ContextPackage p   -> viewPackage view p
+
+targetGroupDocumentation :: TargetGroup -> M ()
+targetGroupDocumentation tgroup = do
+  let item = NonEmpty.head tgroup
+  context <- State.gets sContext
+  case item of
+    Hoogle.Module hmod ->
+      withModule (Hoogle.mUrl hmod) viewModuleDocs
+    Hoogle.Package pkg ->
+      withPackage (Hoogle.pUrl pkg) viewPackageDocs
+    Hoogle.Declaration d ->
+      withModule (Hoogle.dModuleUrl d) $ \mod -> do
+      State.modify' $ \ s -> s { sContext = context }
+      viewInTerminalPaged $ case targetDeclaration d mod of
+        Just decl -> prettyDecl decl
+        Nothing   -> viewDescription item
 
 -- errors
 errSourceOnlyForDeclarations :: M a
@@ -481,6 +519,10 @@ errEmptyContext =
 errNoSourceAvailable :: M a
 errNoSourceAvailable =
  throwError "no source available for that declaration"
+
+errNotDeclarationButModule :: M a
+errNotDeclarationButModule =
+  throwError "item at index is not a declaration; it is a module."
 
 targetDeclaration :: Hoogle.Declaration -> Module -> Maybe Declaration
 targetDeclaration decl = lookupDecl anchor
@@ -519,9 +561,8 @@ elemAt ix =
   . listToMaybe
   . drop (ix - 1)
 
-withPackageForIndex :: Int -> [TargetGroup] -> (Package -> M a) -> M a
-withPackageForIndex ix results act = do
-  tgroup <- elemAt ix results
+withPackageForTargetGroup :: TargetGroup -> (Package -> M a) -> M a
+withPackageForTargetGroup tgroup act = do
   purl <- selectPackage tgroup
   withPackage purl act
   where
@@ -539,9 +580,13 @@ withPackageForIndex ix results act = do
       Hoogle.Declaration d -> (Hoogle.dPackageUrl d,) <$> viewItemPackage x
       Hoogle.Package p     -> (Hoogle.pUrl p,)        <$> viewItemPackage x
 
-withModuleForIndex :: Int -> [TargetGroup] -> (Module -> M a) -> M a
-withModuleForIndex ix results act = do
+withPackageForIndex :: Int -> [TargetGroup] -> (Package -> M a) -> M a
+withPackageForIndex ix results act = do
   tgroup <- elemAt ix results
+  withPackageForTargetGroup tgroup act
+
+withModuleForTargetGroup :: TargetGroup -> (Module -> M a) -> M a
+withModuleForTargetGroup tgroup act = do
   murl <- selectModule tgroup
   withModule murl act
   where
@@ -561,6 +606,11 @@ withModuleForIndex ix results act = do
       Hoogle.Package _ ->
         Nothing
 
+withModuleForIndex :: Int -> [TargetGroup] -> (Module -> M a) -> M a
+withModuleForIndex ix results act = do
+  tgroup <- elemAt ix results
+  withModuleForTargetGroup tgroup act
+
 promptSelectOne :: NonEmpty (a, P.Doc) -> M a
 promptSelectOne nonEmptyXs
   | [(x,_)] <- toList nonEmptyXs = return x
@@ -578,22 +628,31 @@ promptSelectOne nonEmptyXs
         liftIO $ putStrLn "Number not recognised"
         promptSelectOne nonEmptyXs
 
+matchingPrefix :: HasCompletion a => String -> [a] -> (a -> M b) -> M b
+matchingPrefix prefix values act =
+  case find ((prefix `isPrefixOf`) . completion) values of
+    Nothing -> throwError "No item matching prefix"
+    Just res -> act res
 
-withTargetGroup :: Int -> [TargetGroup] -> (TargetGroup -> M a) -> M a
-withTargetGroup ix groups act = do
+withTargetGroupIx :: Int -> [TargetGroup] -> (TargetGroup -> M a) -> M a
+withTargetGroupIx ix groups act = do
   tgroup <- elemAt ix groups
   act tgroup
 
-withModuleFromPackage :: Int -> Package -> (Module -> M a) -> M a
-withModuleFromPackage ix Package{..} act = do
-  url <- packageModuleUrl pUrl <$> elemAt ix pModules
+withModuleFromPackage :: String -> Package -> (Module -> M a) -> M a
+withModuleFromPackage modName Package{..} act = do
+  let url = packageModuleUrl pUrl modName
   html <- fetch' url
   let mod = parseModuleDocs url html
   State.modify' $ \s -> s{ sContext = ContextModule mod }
   act mod
 
-withDeclFromModule :: Int -> Module -> (Declaration -> M a) -> M a
-withDeclFromModule ix mod act = do
+withModuleFromPackageIx :: Int -> Package -> (Module -> M a) -> M a
+withModuleFromPackageIx ix p act =
+  elemAt ix (pModules p) >>= \m -> withModuleFromPackage m p act
+
+withDeclFromModuleIx :: Int -> Module -> (Declaration -> M a) -> M a
+withDeclFromModuleIx ix mod act = do
   decl <- elemAt ix (mDeclarations mod)
   act decl
 
@@ -607,6 +666,13 @@ viewSearchResults
 
 viewDeclaration :: MonadIO m => Declaration -> m ()
 viewDeclaration = viewInTerminalPaged . prettyDecl
+
+viewDeclarationWithLink :: MonadIO m => Declaration -> m ()
+viewDeclarationWithLink decl = viewInTerminalPaged $ P.vcat
+  [ prettyDecl decl
+    -- ad-hoc link colour
+  , P.cyan $ P.text $ getUrl (dDeclUrl decl)
+  ]
 
 viewModule :: MonadIO m => View -> Module -> m ()
 viewModule Interface = viewModuleInterface
@@ -820,8 +886,8 @@ lookupDecl :: Anchor -> Module -> Maybe Declaration
 lookupDecl anchor (Module _ _ decls _) =
   find (Set.member anchor . dAnchors) decls
 
-viewFull :: TargetGroup -> P.Doc
-viewFull tgroup = P.vsep
+viewTargetGroup :: TargetGroup -> M ()
+viewTargetGroup tgroup = viewInTerminalPaged $ P.vsep
   [ divider
   , content
   , divider

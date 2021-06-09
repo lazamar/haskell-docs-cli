@@ -44,6 +44,7 @@ import qualified Data.Text.Encoding as Text
 import qualified Text.HTML.DOM as Html
 import qualified Text.XML as Xml
 import qualified Data.Text as Text
+import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Text.PrettyPrint.ANSI.Leijen as P
@@ -88,6 +89,12 @@ data Package = Package
 -- | Types that can be selected with tab completion
 class HasCompletion a where
   completion :: a -> String
+
+instance HasCompletion a => HasCompletion (NonEmpty.NonEmpty a) where
+  completion = completion . NonEmpty.head
+
+instance HasCompletion String where
+  completion = id
 
 instance HasCompletion Declaration where
   completion = dCompletion
