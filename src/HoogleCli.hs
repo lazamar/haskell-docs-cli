@@ -233,6 +233,7 @@ commands =
   , "src"
 
   , "declaration"
+  , "ddocumentation"
 
   , "module"
   , "mdocumentation"
@@ -266,6 +267,7 @@ parseCommand str = case str of
       "src"            -> ViewDeclarationSource selection
       -- declaration
       "declaration"    -> ViewDeclaration selection
+      "ddocumentation" -> ViewDeclaration selection
       -- module
       "module"         -> ViewModule Interface selection
       "mdocumentation" -> ViewModule Documentation selection
@@ -323,14 +325,10 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
   -- <INDEX>
   ViewAny Interface (SelectByIndex ix) ->
     case context of
-      ContextEmpty ->
-        errEmptyContext
-      ContextSearch _ results ->
-        withIx ix results viewTargetGroup
-      ContextModule mod -> do
-        withIx ix (mDeclarations mod) viewDeclarationWithLink
-      ContextPackage package ->
-        withModuleFromPackageIx ix package viewModuleInterface
+      ContextEmpty       -> errEmptyContext
+      ContextSearch _ xs -> withIx ix xs viewTargetGroup
+      ContextModule m    -> do withIx ix (mDeclarations m) viewDeclarationWithLink
+      ContextPackage p   -> withModuleFromPackageIx ix p viewModuleInterface
 
   -- /<PREFIX>
   ViewAny Interface (SelectByPrefix pre) ->
@@ -397,19 +395,21 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
       ContextPackage _   -> errSourceOnlyForDeclarations
 
   -- :declaration
+  -- :ddocumentation
   ViewDeclaration SelectContext ->
     throwError "no declaration selected."
 
   -- :declaration <TERM>
   ViewDeclaration (Search term) ->
     withFirstSearchResult declResult term $ \hdecl ->
-    viewInTerminalPaged $ viewDescription (Hoogle.Declaration hdecl)
+    let tgroup = Hoogle.Declaration hdecl NonEmpty.:| []
+    in targetGroupDocumentation tgroup
 
   -- :declaration <INDEX>
   ViewDeclaration (SelectByIndex ix) ->
     case context of
       ContextEmpty       -> errEmptyContext
-      ContextSearch _ xs -> withIx ix xs $ viewInTerminalPaged . viewDescription . NonEmpty.head
+      ContextSearch _ xs -> withIx ix xs viewTargetGroup
       ContextModule m    -> withDeclFromModuleIx ix m viewDeclaration
       ContextPackage _   -> errNotDeclarationButModule
 
@@ -417,7 +417,7 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
   ViewDeclaration (SelectByPrefix pre) ->
     case context of
       ContextEmpty       -> errEmptyContext
-      ContextSearch _ xs -> withPrefix pre xs $ viewInTerminalPaged . viewDescription . NonEmpty.head
+      ContextSearch _ xs -> withPrefix pre xs viewTargetGroup
       ContextModule m    -> withPrefix pre (mDeclarations m) viewDeclaration
       ContextPackage _   -> errNotDeclarationButModule
 
