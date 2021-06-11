@@ -598,14 +598,14 @@ withPackageForTargetGroup act tgroup = do
     selectPackage
       = promptSelectOne
       . nubBy ((==) `on` fst)
-      . mapMaybe f
+      . map f
       . toList
 
-    f :: Hoogle.Item -> Maybe (PackageUrl, P.Doc)
+    f :: Hoogle.Item -> (PackageUrl, P.Doc)
     f x = case x of
-      Hoogle.Module m      -> (Hoogle.mPackageUrl m,) <$> viewItemPackage x
-      Hoogle.Declaration d -> (Hoogle.dPackageUrl d,) <$> viewItemPackage x
-      Hoogle.Package p     -> (Hoogle.pUrl p,)        <$> viewItemPackage x
+      Hoogle.Module m      -> (Hoogle.mPackageUrl m, viewItemPackage x)
+      Hoogle.Declaration d -> (Hoogle.dPackageUrl d, viewItemPackage x)
+      Hoogle.Package p     -> (Hoogle.pUrl p       , viewItemPackage x)
 
 withModuleForTargetGroup :: (Module -> M a) -> TargetGroup -> M a
 withModuleForTargetGroup act tgroup = do
@@ -620,12 +620,9 @@ withModuleForTargetGroup act tgroup = do
 
     f :: Hoogle.Item -> Maybe (ModuleUrl, P.Doc)
     f x = case x of
-      Hoogle.Module m ->
-        (Hoogle.mUrl m,) <$> viewItemPackageAndModule x
-      Hoogle.Declaration d ->
-        (Hoogle.dModuleUrl d,) <$> viewItemPackageAndModule x
-      Hoogle.Package _ ->
-        Nothing
+      Hoogle.Module m      -> Just (Hoogle.mUrl m, viewItemPackageAndModule x)
+      Hoogle.Declaration d -> Just (Hoogle.dModuleUrl d, viewItemPackageAndModule x)
+      Hoogle.Package _     -> Nothing
 
 promptSelectOne :: [(a, P.Doc)] -> M a
 promptSelectOne = \case
@@ -848,7 +845,7 @@ viewPackageInfoList
   = P.group
   . P.fillSep
   . P.punctuate P.comma
-  . mapMaybe viewItemPackageAndModule
+  . map viewItemPackageAndModule
   . toList
 
 viewPackageName :: String -> P.Doc
@@ -857,24 +854,17 @@ viewPackageName = P.magenta . P.text
 viewModuleName :: String -> P.Doc
 viewModuleName = P.black . P.text
 
-viewItemPackage :: Hoogle.Item -> Maybe P.Doc
+viewItemPackage :: Hoogle.Item -> P.Doc
 viewItemPackage = \case
-  Hoogle.Declaration d ->
-    Just $ viewPackageName (Hoogle.dPackage d)
-  Hoogle.Module m ->
-    Just $ viewPackageName (Hoogle.mPackage m)
-  Hoogle.Package _ ->
-    Nothing
+  Hoogle.Declaration d -> viewPackageName (Hoogle.dPackage d)
+  Hoogle.Module m      -> viewPackageName (Hoogle.mPackage m)
+  Hoogle.Package p     -> viewPackageName (Hoogle.pTitle p)
 
-viewItemPackageAndModule :: Hoogle.Item -> Maybe P.Doc
-viewItemPackageAndModule = \case
-  Hoogle.Declaration d ->
-    Just $ viewPackageName (Hoogle.dPackage d)
-      P.<+> viewModuleName (Hoogle.dModule d)
-  Hoogle.Module m ->
-    Just $ viewPackageName (Hoogle.mPackage m)
-  Hoogle.Package _ ->
-    Nothing
+viewItemPackageAndModule :: Hoogle.Item -> P.Doc
+viewItemPackageAndModule item = case item of
+  Hoogle.Declaration d -> viewItemPackage item P.<+> viewModuleName (Hoogle.dModule d)
+  Hoogle.Module _      -> viewItemPackage item
+  Hoogle.Package _     -> viewItemPackage item
 
 prettyModule :: Module -> P.Doc
 prettyModule (Module name minfo decls _) =
