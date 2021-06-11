@@ -119,6 +119,7 @@ runCLI state program = do
   settings <- cliSettings
   flip State.evalStateT state
     $ CLI.runInputT settings
+    $ CLI.withInterrupt
     $ runExceptT
     $ runM program
 
@@ -294,16 +295,25 @@ parseCommand str = case str of
   _                         -> Right $ ViewAny Interface $ Search str
 
 interactive :: M ()
-interactive = do
-  context <- State.gets sContext
-  case context of
-    ContextEmpty      -> return ()
-    ContextSearch t _ -> liftIO $ putStrLn $ "search: " <> t
-    ContextModule m   -> liftIO $ putStrLn $ "module: " <> mTitle m
-    ContextPackage p  -> liftIO $ putStrLn $ "package: " <> pTitle p
-  minput <- getInputLine "hoogle> "
-  evaluate $ fromMaybe "" minput
-  interactive
+interactive = loop $ do
+  printContext
+  input <- fromMaybe "" <$> getInputLine "hoogle> "
+  evaluate input
+  where
+    onError = return $ Right ()
+
+    loop action = tryM action >> loop action
+
+    tryM :: M () -> M ()
+    tryM = M. ExceptT . CLI.handleInterrupt onError . runExceptT . runM
+
+    printContext = do
+      context <- State.gets sContext
+      case context of
+        ContextEmpty      -> return ()
+        ContextSearch t _ -> liftIO $ putStrLn $ "search: " <> t
+        ContextModule m   -> liftIO $ putStrLn $ "module: " <> mTitle m
+        ContextPackage p  -> liftIO $ putStrLn $ "package: " <> pTitle p
 
 evaluate :: String -> M ()
 evaluate input =
