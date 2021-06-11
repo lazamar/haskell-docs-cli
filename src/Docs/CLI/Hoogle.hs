@@ -1,13 +1,13 @@
 -- | Functions and data types to handle Hoogle results
 
-module HoogleCli.Hoogle where
+module Docs.CLI.Hoogle where
 
 import Prelude hiding (mod)
 import Data.Maybe (fromMaybe)
 import Data.Aeson (FromJSON(..))
 
-import HoogleCli.Types
-import HoogleCli.Haddock (Html, parseHoogleHtml, HasCompletion(..), innerString)
+import Docs.CLI.Types
+import Docs.CLI.Haddock (Html, parseHoogleHtml, HasCompletion(..), innerString)
 import qualified Hoogle
 
 data Item

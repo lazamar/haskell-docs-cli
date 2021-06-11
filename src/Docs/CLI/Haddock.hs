@@ -3,7 +3,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 
 -- | Functions to parse and display Haddock HTML
-module HoogleCli.Haddock
+module Docs.CLI.Haddock
   ( Html
   , HtmlPage
   , Declaration(..)
@@ -24,7 +24,7 @@ module HoogleCli.Haddock
   )
   where
 
-import HoogleCli.Types
+import Docs.CLI.Types
 
 import Data.List.Extra (unescapeHTML)
 import Data.Foldable (fold)

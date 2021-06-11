@@ -1,7 +1,7 @@
 {-# LANGUAGE ApplicativeDo #-}
 module Main where
 
-import HoogleCli
+import Docs.CLI.Evaluate
   ( interactive
   , evaluate
   , evaluateCmd

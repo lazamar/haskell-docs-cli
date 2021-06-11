@@ -1,4 +1,4 @@
-module HoogleCli.Types where
+module Docs.CLI.Types where
 
 import Data.Text (Text)
 

@@ -1,6 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wwarn #-}
-module HoogleCli
+module Docs.CLI.Evaluate
   ( interactive
   , evaluate
   , evaluateCmd
@@ -41,9 +41,9 @@ import System.IO.Temp (withSystemTempFile)
 import System.Exit (exitSuccess)
 import qualified Hoogle as H
 
-import HoogleCli.Types
-import HoogleCli.Haddock as Haddock
-import qualified HoogleCli.Hoogle as Hoogle
+import Docs.CLI.Types
+import Docs.CLI.Haddock as Haddock
+import qualified Docs.CLI.Hoogle as Hoogle
 
 import qualified Control.Concurrent.Async as Async
 import qualified Control.Concurrent.MVar as MVar

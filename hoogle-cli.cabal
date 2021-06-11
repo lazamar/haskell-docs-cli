@@ -4,16 +4,16 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 067ecca0c5761d6466bd2c05f8beacc51849ef93fbae8c9cc8332e7ed3bfaa5a
+-- hash: e9f1bf86e883058dcf5fa00b9edd1e3f46ec38c653df7fb0621cbe519f6fce93
 
 name:           hoogle-cli
 version:        0.1.0.0
 description:    Please see the README on GitHub at <https://github.com/githubuser/hoogle-cli#readme>
 homepage:       https://github.com/githubuser/hoogle-cli#readme
 bug-reports:    https://github.com/githubuser/hoogle-cli/issues
-author:         Author name here
+author:         Marcelo Lazaroni
 maintainer:     example@example.com
-copyright:      2021 Author name here
+copyright:      2021 Marcelo Lazaroni
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
@@ -27,10 +27,11 @@ source-repository head
 
 library
   exposed-modules:
-      HoogleCli
-      HoogleCli.Haddock
-      HoogleCli.Hoogle
-      HoogleCli.Types
+      Docs.CLI.Evaluate
+      Docs.CLI.Haddock
+      Docs.CLI.Hoogle
+      Docs.CLI.Types
+      Main
   other-modules:
       Paths_hoogle_cli
   hs-source-dirs:
@@ -64,9 +65,13 @@ library
 executable hoogle-cli-exe
   main-is: Main.hs
   other-modules:
+      Docs.CLI.Evaluate
+      Docs.CLI.Haddock
+      Docs.CLI.Hoogle
+      Docs.CLI.Types
       Paths_hoogle_cli
   hs-source-dirs:
-      app
+      src
   default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
   build-depends:

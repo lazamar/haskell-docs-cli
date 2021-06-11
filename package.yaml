@@ -2,9 +2,9 @@ name:                hoogle-cli
 version:             0.1.0.0
 github:              "githubuser/hoogle-cli"
 license:             BSD3
-author:              "Author name here"
+author:              "Marcelo Lazaroni"
 maintainer:          "example@example.com"
-copyright:           "2021 Author name here"
+copyright:           "2021 Marcelo Lazaroni"
 
 extra-source-files:
 - README.md
@@ -61,7 +61,7 @@ library:
 executables:
   hoogle-cli-exe:
     main:                Main.hs
-    source-dirs:         app
+    source-dirs:         src
     ghc-options:
     - -threaded
     - -rtsopts
