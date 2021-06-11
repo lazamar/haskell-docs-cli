@@ -30,7 +30,7 @@ import Data.Bifunctor (bimap)
 import Data.ByteString.Lazy (ByteString)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Text.Read (readMaybe)
-import Data.Maybe (fromMaybe, mapMaybe, listToMaybe, catMaybes)
+import Data.Maybe (fromMaybe, mapMaybe, listToMaybe)
 import Data.List hiding (groupBy)
 import Data.List.Extra (breakOn)
 import Data.Char (isSpace)
@@ -671,8 +671,7 @@ viewDeclaration = viewInTerminalPaged . prettyDecl
 viewDeclarationWithLink :: MonadIO m => Declaration -> m ()
 viewDeclarationWithLink decl = viewInTerminalPaged $ P.vcat
   [ prettyDecl decl
-    -- ad-hoc link colour
-  , P.cyan $ P.text $ getUrl (dDeclUrl decl)
+  , Haddock.link $ P.text $ getUrl (dDeclUrl decl)
   ]
 
 viewModule :: MonadIO m => View -> Module -> m ()
@@ -699,14 +698,17 @@ viewPackageInterface Package{..} =
   viewInTerminalPaged $ P.vsep $ numbered (P.text <$> pModules)
 
 viewPackageDocs :: MonadIO m => Package -> m ()
-viewPackageDocs Package{..} = viewInTerminalPaged $ P.vsep $ catMaybes
-  [ Just $ mainHeading $ case pSubTitle of
+viewPackageDocs Package{..} = viewInTerminalPaged $ P.vsep $
+  [ mainHeading $ case pSubTitle of
       Nothing -> pTitle
       Just s -> pTitle <> ": " <> s
-  , Just $ section "Description" (prettyHtml pDescription)
-  , section "Readme" . prettyHtml <$> pReadme
-  , Just $ section "Properties" (P.vsep $ map viewProp pProperties)
+  , Haddock.link $  P.text $ getUrl pUrl
+  , section "Description" (prettyHtml pDescription)
   ]
+  ++
+  [ section "Readme" $ prettyHtml readme | Just readme <- [pReadme] ]
+  ++
+  [ section "Properties" (P.vsep $ map viewProp pProperties) ]
   where
     section heading body =
       P.text heading <> P.nest 2 (P.linebreak <> body)
@@ -759,9 +761,9 @@ printDoc handle doc = liftIO $ do
 
 viewSource :: DeclUrl -> M ()
 viewSource durl = do
-  link <- sourceLink durl
-  html <- fetch' link
-  viewInEditor (fileInfo link html)
+  url <- sourceLink durl
+  html <- fetch' url
+  viewInEditor (fileInfo url html)
   where
     viewInEditor :: FileInfo -> M ()
     viewInEditor (FileInfo filename mline content) = do
@@ -867,10 +869,14 @@ viewItemPackageAndModule item = case item of
   Hoogle.Package _     -> viewItemPackage item
 
 prettyModule :: Module -> P.Doc
-prettyModule (Module name minfo decls _) =
-  P.vsep $ [mainHeading name]
-    ++ [ prettyHtml info | Just info <- [minfo] ]
-    ++ [ prettyDecl decl | decl <- decls ]
+prettyModule (Module name minfo decls murl) = P.vsep $
+  [ mainHeading name
+  , Haddock.link $  P.text $ getUrl murl
+  ]
+  ++
+  [ prettyHtml info | Just info <- [minfo] ]
+  ++
+  [ prettyDecl decl | decl <- decls ]
 
 prettyDecl :: Declaration -> P.Doc
 prettyDecl Declaration{..} =
@@ -913,7 +919,7 @@ sourceLink (DeclUrl murl anchor) = do
       [ "anchor missing in module docs"
       , show murl
       ] ++ map show links
-    Just link -> return link
+    Just slink -> return slink
 
 declUrl :: Declaration -> DeclUrl
 declUrl Declaration{..} =  DeclUrl dModuleUrl dAnchor

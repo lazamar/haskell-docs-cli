@@ -21,6 +21,7 @@ module Docs.CLI.Haddock
   , prettyHtml
   , numbered
   , parseHoogleHtml
+  , link
   )
   where
 
@@ -372,7 +373,7 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
                       $ Just . P.nest 2 . P.black . linebreak . P.string . Text.unpack
                       $ innerText e
        "code"    -> Just . P.black
-       "a"       -> Just . P.cyan
+       "a"       -> Just . link
        "b"       -> Just . P.bold
        "p"       -> Just . linebreak
        "dt"      -> Just . P.bold . linebreak
@@ -483,4 +484,7 @@ numbered = zipWith f [1..]
 
 bullet :: P.Doc -> P.Doc
 bullet doc = P.fill 2 (P.char '-') <> P.align doc
+
+link :: P.Doc -> P.Doc
+link = P.cyan
 
