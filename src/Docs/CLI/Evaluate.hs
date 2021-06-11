@@ -311,9 +311,9 @@ interactive = loop $ do
       context <- State.gets sContext
       case context of
         ContextEmpty      -> return ()
-        ContextSearch t _ -> liftIO $ putStrLn $ "search: " <> t
-        ContextModule m   -> liftIO $ putStrLn $ "module: " <> mTitle m
-        ContextPackage p  -> liftIO $ putStrLn $ "package: " <> pTitle p
+        ContextSearch t _ -> viewInTerminal $ P.text $ "search: " <> t
+        ContextModule m   -> viewInTerminal $ P.text $ "module: " <> mTitle m
+        ContextPackage p  -> viewInTerminal $ P.text $ "package: " <> pTitle p
 
 evaluate :: String -> M ()
 evaluate input =
