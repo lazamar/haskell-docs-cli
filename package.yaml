@@ -42,6 +42,7 @@ dependencies:
 - mtl
 - exceptions
 - async
+- filepath
 
 default-extensions:
 - ApplicativeDo

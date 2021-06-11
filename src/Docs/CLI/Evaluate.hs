@@ -35,11 +35,12 @@ import Data.List hiding (groupBy)
 import Data.List.Extra (breakOn)
 import Data.Char (isSpace)
 import Data.Map.Strict (Map)
-import System.Environment (getEnv)
+import System.Environment (getEnv, lookupEnv)
 import System.IO (hPutStrLn, hClose, stdout, Handle)
 import System.IO.Temp (withSystemTempFile)
 import System.Exit (exitSuccess)
 import qualified Hoogle as H
+import System.FilePath ((</>))
 
 import Docs.CLI.Types
 import Docs.CLI.Haddock as Haddock
@@ -114,15 +115,23 @@ instance MonadState ShellState M where
   state f = M $ lift $ lift $ State.state f
 
 runCLI :: ShellState -> M a -> IO (Either String a)
-runCLI state
-  = flip State.evalStateT state
-  . CLI.runInputT cliSettings
-  . runExceptT
-  . runM
+runCLI state program = do
+  settings <- cliSettings
+  flip State.evalStateT state
+    $ CLI.runInputT settings
+    $ runExceptT
+    $ runM program
 
-cliSettings :: CLI.Settings (StateT ShellState IO)
-cliSettings = (CLI.defaultSettings :: CLI.Settings (StateT ShellState IO))
-  { CLI.complete = complete }
+cliSettings :: IO (CLI.Settings (StateT ShellState IO))
+cliSettings = do
+  mhome <- lookupEnv "HOME"
+  return $ def
+    { CLI.complete = complete
+    , CLI.historyFile = mhome <&> (</> ".hasekell-docs-cli.history")
+    }
+  where
+    def :: CLI.Settings (StateT ShellState IO)
+    def = CLI.defaultSettings
 
 complete :: CLI.CompletionFunc (StateT ShellState IO)
 complete (left', _) = do

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e9f1bf86e883058dcf5fa00b9edd1e3f46ec38c653df7fb0621cbe519f6fce93
+-- hash: a11e8794c4f2fb9d562e37a6b1411b9913c9304c383d9f6b8f769e304a09bbc3
 
 name:           hoogle-cli
 version:        0.1.0.0
@@ -46,6 +46,7 @@ library
     , containers
     , exceptions
     , extra
+    , filepath
     , haskeline
     , hoogle
     , html-conduit
@@ -83,6 +84,7 @@ executable hoogle-cli-exe
     , containers
     , exceptions
     , extra
+    , filepath
     , haskeline
     , hoogle
     , hoogle-cli
@@ -118,6 +120,7 @@ test-suite hoogle-cli-test
     , containers
     , exceptions
     , extra
+    , filepath
     , haskeline
     , hoogle
     , hoogle-cli
