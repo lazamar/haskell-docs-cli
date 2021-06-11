@@ -597,7 +597,6 @@ withPackageForTargetGroup act tgroup = do
     selectPackage :: TargetGroup -> M PackageUrl
     selectPackage
       = promptSelectOne
-      . NonEmpty.fromList
       . nubBy ((==) `on` fst)
       . mapMaybe f
       . toList
@@ -616,7 +615,6 @@ withModuleForTargetGroup act tgroup = do
     selectModule :: TargetGroup -> M ModuleUrl
     selectModule
       = promptSelectOne
-      . NonEmpty.fromList
       . mapMaybe f
       . toList
 
@@ -629,10 +627,11 @@ withModuleForTargetGroup act tgroup = do
       Hoogle.Package _ ->
         Nothing
 
-promptSelectOne :: NonEmpty (a, P.Doc) -> M a
-promptSelectOne nonEmptyXs
-  | [(x,_)] <- toList nonEmptyXs = return x
-  | xs      <- toList nonEmptyXs = do
+promptSelectOne :: [(a, P.Doc)] -> M a
+promptSelectOne = \case
+  []      -> throwError "No matching options"
+  [(x,_)] -> return x
+  xs      -> do
     liftIO $ putStrLn "Select one:"
     viewInTerminal $ P.vsep $ numbered $ map snd xs
     num <- getInputLine ": "
@@ -641,10 +640,10 @@ promptSelectOne nonEmptyXs
         Just (x, _) -> return x
         Nothing -> do
           liftIO $ putStrLn "Invalid index"
-          promptSelectOne nonEmptyXs
+          promptSelectOne xs
       Nothing -> do
         liftIO $ putStrLn "Number not recognised"
-        promptSelectOne nonEmptyXs
+        promptSelectOne xs
 
 withModuleFromPackage :: String -> Package -> (Module -> M a) -> M a
 withModuleFromPackage modName Package{..} act = do
