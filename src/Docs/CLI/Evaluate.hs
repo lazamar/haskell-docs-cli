@@ -20,21 +20,18 @@ import Control.Monad (unless, void)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Except (ExceptT(..), MonadError, catchError, runExceptT, throwError)
 import Control.Monad.Catch (MonadThrow)
-import Control.Concurrent.MVar (MVar)
 import Control.Monad.State.Lazy (MonadState, StateT(..))
 import Data.Foldable (toList)
 import Data.Function (on)
 import Data.Functor ((<&>))
 import Data.List.NonEmpty (NonEmpty)
 import Data.Bifunctor (bimap)
-import Data.ByteString.Lazy (ByteString)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, mapMaybe, listToMaybe)
 import Data.List hiding (groupBy)
 import Data.List.Extra (breakOn)
 import Data.Char (isSpace)
-import Data.Map.Strict (Map)
 import System.Environment (getEnv, lookupEnv)
 import System.IO (hPutStrLn, hClose, stdout, Handle)
 import System.IO.Temp (withSystemTempFile)
@@ -45,6 +42,7 @@ import System.FilePath ((</>))
 import Docs.CLI.Types
 import Docs.CLI.Haddock as Haddock
 import qualified Docs.CLI.Hoogle as Hoogle
+import Data.Cache
 
 import qualified Control.Concurrent.Async as Async
 import qualified Control.Concurrent.MVar as MVar
@@ -68,7 +66,7 @@ import qualified Text.PrettyPrint.ANSI.Leijen as P
 data ShellState = ShellState
   { sContext :: Context
   , sManager :: Http.Manager
-  , sCache :: Map Url (MVar ByteString)
+  , sCache :: Cache
   }
 
 type TargetGroup = NonEmpty Hoogle.Item
@@ -788,22 +786,16 @@ fetch' x = do
 fetch :: Http.Request -> M LB.ByteString
 fetch req = do
   cache <- State.gets sCache
-  let key = show req
-  case Map.lookup key cache of
-    Just mvar -> liftIO $ MVar.readMVar mvar
-    Nothing -> do
+  cached cache (show req) $ do
+      liftIO $ putStrLn "Making HTTP request"
       manager <- State.gets sManager
-      mvar <- liftIO MVar.newEmptyMVar
-      State.modify $ \s -> s { sCache = Map.insert key mvar (sCache s) }
       res <- liftIO $ Http.httpLbs req manager
       let status = Http.responseStatus res
       unless (Http.statusIsSuccessful status) $
         throwError
           $ "unable to fetch page: "
           <> Text.unpack (Text.decodeUtf8 $ Http.statusMessage status)
-      let body = Http.responseBody res
-      liftIO $ MVar.putMVar mvar body
-      return body
+      return $ Http.responseBody res
 
 moduleResult :: (String, Hoogle.Item -> Maybe Hoogle.Module)
 moduleResult = ("module", toModule)

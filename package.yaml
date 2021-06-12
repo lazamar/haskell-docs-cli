@@ -43,6 +43,9 @@ dependencies:
 - exceptions
 - async
 - filepath
+- time
+- hashable
+- directory
 
 default-extensions:
 - ApplicativeDo

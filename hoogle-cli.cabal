@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a11e8794c4f2fb9d562e37a6b1411b9913c9304c383d9f6b8f769e304a09bbc3
+-- hash: d9e3f84320b4ff24c372281f333b885d51e2e257d0c40d9863d17a4305704f6c
 
 name:           hoogle-cli
 version:        0.1.0.0
@@ -27,6 +27,7 @@ source-repository head
 
 library
   exposed-modules:
+      Data.Cache
       Docs.CLI.Evaluate
       Docs.CLI.Haddock
       Docs.CLI.Hoogle
@@ -44,9 +45,11 @@ library
     , base >=4.7 && <5
     , bytestring
     , containers
+    , directory
     , exceptions
     , extra
     , filepath
+    , hashable
     , haskeline
     , hoogle
     , html-conduit
@@ -59,6 +62,7 @@ library
     , temporary
     , terminal-size
     , text
+    , time
     , transformers
     , xml-conduit
   default-language: Haskell2010
@@ -66,6 +70,7 @@ library
 executable hoogle-cli-exe
   main-is: Main.hs
   other-modules:
+      Data.Cache
       Docs.CLI.Evaluate
       Docs.CLI.Haddock
       Docs.CLI.Hoogle
@@ -82,9 +87,11 @@ executable hoogle-cli-exe
     , base >=4.7 && <5
     , bytestring
     , containers
+    , directory
     , exceptions
     , extra
     , filepath
+    , hashable
     , haskeline
     , hoogle
     , hoogle-cli
@@ -98,6 +105,7 @@ executable hoogle-cli-exe
     , temporary
     , terminal-size
     , text
+    , time
     , transformers
     , xml-conduit
   default-language: Haskell2010
@@ -118,9 +126,11 @@ test-suite hoogle-cli-test
     , base >=4.7 && <5
     , bytestring
     , containers
+    , directory
     , exceptions
     , extra
     , filepath
+    , hashable
     , haskeline
     , hoogle
     , hoogle-cli
@@ -134,6 +144,7 @@ test-suite hoogle-cli-test
     , temporary
     , terminal-size
     , text
+    , time
     , transformers
     , xml-conduit
   default-language: Haskell2010

@@ -13,15 +13,36 @@ import Docs.CLI.Evaluate
   , runCLI
   )
 
-import Control.Applicative (many)
+import Control.Applicative (many, (<|>))
 import Control.Monad (void)
 import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
 import qualified Network.HTTP.Client as Http
 import qualified Options.Applicative as O
+import System.Environment (getEnv)
+import System.FilePath.Posix ((</>))
+import System.Directory (createDirectoryIfMissing)
+
+import Data.Cache as Cache
 
 newtype Options = Options
   { arguments :: String
   }
+
+newtype AppData = AppData FilePath
+
+-- | Create direcotry of app data if it doesn't exist
+mkAppDataDir :: IO AppData
+mkAppDataDir  = do
+  home <- getEnv "HOME" <|> error "HOME environment variable not set"
+  let dir = home </> ".haskell-docs-cli"
+  createDirectoryIfMissing True dir
+  return $ AppData dir
+
+cachePolicy :: AppData -> IO Cache.EvictionPolicy
+cachePolicy (AppData root) = do
+  let dir = root </> "cache"
+  createDirectoryIfMissing True dir
+  return $ Cache.MaxSize (Cache.megabytes 100) dir
 
 cliOptions :: O.ParserInfo Options
 cliOptions = O.info parser $ O.header " \
@@ -36,10 +57,13 @@ main :: IO ()
 main = void $ do
   Options{..} <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
+  appData <- mkAppDataDir
+  policy <- cachePolicy appData
+  cache <- Cache.create policy
   let state = ShellState
         { sContext = ContextEmpty
         , sManager = manager
-        , sCache = mempty
+        , sCache = cache
         }
   runCLI state $
     case arguments of
@@ -50,10 +74,13 @@ main' :: IO ()
 main' = void $ do
   Options{} <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
+  appData <- mkAppDataDir
+  policy <- cachePolicy appData
+  cache <- Cache.create policy
   let state = ShellState
         { sContext = ContextEmpty
         , sManager = manager
-        , sCache = mempty
+        , sCache = cache
         }
   runCLI state $ do
     evaluateCmd (ViewModule Documentation $ Search "Data.Set")
