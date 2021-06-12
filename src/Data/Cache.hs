@@ -2,34 +2,30 @@
 -- | Store results of named computations.
 module Data.Cache where
 
-import Control.Applicative ((<|>))
 import Control.Monad.IO.Class (MonadIO, liftIO)
-import Control.Monad.Trans.Maybe (MaybeT(..))
 import Data.ByteString.Lazy (ByteString)
-import Data.Time.Clock (secondsToNominalDiffTime, nominalDiffTimeToSeconds)
-import Data.Time.Clock.POSIX (POSIXTime, getPOSIXTime)
-import Data.Hashable (hash)
-import Data.Maybe (mapMaybe)
-import Data.Bifunctor (second)
+import Data.Time.Clock (UTCTime(..), getCurrentTime, diffTimeToPicoseconds)
+import Data.Time.Calendar (showGregorian)
+import Data.Traversable (for)
+import Data.List (isPrefixOf, find, intercalate)
 import Control.Concurrent.MVar (MVar)
 import Data.Map.Strict (Map)
 import System.FilePath.Posix ((</>))
 import System.Directory (listDirectory)
-import Text.Read (readMaybe)
 
-import qualified Control.Concurrent.Async as Async
 import qualified Data.ByteString.Lazy as ByteString
 import qualified Control.Concurrent.MVar as MVar
 import qualified Data.Map.Strict as Map
+import qualified Data.Hashable as Hashable
 
 data Cache = Cache
   { cache_eviction :: EvictionPolicy
-  , cache_inFlight :: MVar (Map Hash (POSIXTime, MVar ByteString))
+  , cache_inFlight :: MVar (Map Hash (UTCTime, MVar ByteString))
   }
 
 newtype Bytes = Bytes Int
 newtype Days = Days Int
-newtype Hash = Hash Int
+newtype Hash = Hash String
   deriving newtype (Show, Eq, Ord)
 
 megabytes :: Int -> Bytes
@@ -42,8 +38,10 @@ data EvictionPolicy
 
 data Entry = Entry
   { entry_hash :: Hash
-  , entry_time :: POSIXTime
+  , entry_time :: UTCTime
   }
+
+newtype SerialisedEntry = SerialisedEntry String
 
 create :: MonadIO m => EvictionPolicy -> m Cache
 create policy = Cache policy <$> liftIO (MVar.newMVar mempty)
@@ -51,7 +49,7 @@ create policy = Cache policy <$> liftIO (MVar.newMVar mempty)
 -- | Try to get result from cache. If not present, run computation.
 cached :: MonadIO m => Cache -> String -> m ByteString -> m ByteString
 cached cache name act = do
-  now <- liftIO getPOSIXTime
+  now <- liftIO getCurrentTime
   let entry = toEntry name now
   mcontent <- retrieve cache entry
   case mcontent of
@@ -73,24 +71,31 @@ save Cache{..} entry content =
     MaxAge _ path -> ByteString.writeFile (file path) content
     NoStorage      -> return ()
   where
-    file store = store </> encode entry
+    file store = store </> fileName (serialise entry)
 
-toEntry :: String -> POSIXTime -> Entry
-toEntry = Entry . Hash . abs . hash
-
-encode :: Entry -> String
-encode (Entry (Hash h) time) = show h <> "-" <> show (nominalDiffTimeToSeconds time)
-
-decode :: String -> Maybe Entry
-decode str = do
-  h <- readMaybe hash'
-  t <- readMaybe time
-  return $ Entry (Hash h) (secondsToNominalDiffTime t)
+toEntry :: String -> UTCTime -> Entry
+toEntry name time = Entry
+  { entry_hash = hash
+  , entry_time = time
+  }
   where
-    (hash', time) = second (drop 1) $ break (== '-') str
+    hash = Hash $ show $ abs $ Hashable.hash name
+
+serialise :: Entry -> SerialisedEntry
+serialise (Entry (Hash hash) (UTCTime day offset)) = SerialisedEntry
+  $ intercalate "-"
+  [ hash, showGregorian day, show (diffTimeToPicoseconds offset) ]
+
+-- | Whether an entry an a serialised entry point to the same content.
+matches :: Entry -> SerialisedEntry -> Bool
+matches (Entry (Hash hash) _) (SerialisedEntry serialised) =
+  hash `isPrefixOf` serialised
+
+fileName :: SerialisedEntry -> FilePath
+fileName (SerialisedEntry s) = s
 
 retrieve :: MonadIO m => Cache -> Entry -> m (Maybe ByteString)
-retrieve Cache{..} (Entry h _) = liftIO $ do
+retrieve Cache{..} entry@(Entry hash _) = liftIO $ do
   inFlight <- fromInFlight
   case inFlight of
     Just res -> return $ Just res
@@ -98,20 +103,17 @@ retrieve Cache{..} (Entry h _) = liftIO $ do
   where
     fromInFlight = do
       inFlight <- MVar.readMVar cache_inFlight
-      case Map.lookup h inFlight of
+      case Map.lookup hash inFlight of
         Just (_, mvar) -> Just <$> MVar.readMVar mvar
-        Nothing           -> return Nothing
+        Nothing        -> return Nothing
 
     fromStorage = case cache_eviction of
       MaxSize _ path -> readFrom path
-      MaxAge _ path -> readFrom path
+      MaxAge _ path  -> readFrom path
       NoStorage      -> return Nothing
 
     readFrom store = do
-      fnames <- listDirectory store
-      let entries = mapMaybe decode fnames
-      case [ e | e@(Entry h' _) <- entries , h' == h ] of
-        (entry:_) -> Just <$> ByteString.readFile (store </> encode entry)
-        _     -> return Nothing
-
+      stored <- fmap SerialisedEntry <$> listDirectory store
+      for (find (matches entry) stored) $ \found ->
+        ByteString.readFile (store </> fileName found)
 
