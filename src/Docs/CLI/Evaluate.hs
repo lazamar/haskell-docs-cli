@@ -677,15 +677,26 @@ viewModule Interface = viewModuleInterface
 viewModule Documentation = viewModuleDocs
 
 viewModuleInterface :: MonadIO m => Module -> m ()
-viewModuleInterface
-  = viewInTerminalPaged
+viewModuleInterface mod =
+  viewInTerminalPaged
   . P.vsep
+  . (mainHeading (mTitle mod) :)
   . numbered
   . map (prettyHtml . dSignature)
   . mDeclarations
+  $ mod
 
 viewModuleDocs :: MonadIO m => Module -> m ()
-viewModuleDocs = viewInTerminalPaged . prettyModule
+viewModuleDocs (Module name minfo decls murl) =
+  viewInTerminalPaged $ P.vsep $
+    [ mainHeading name
+    , Haddock.link $  P.text $ getUrl murl
+    ]
+    ++
+    [ prettyHtml info | Just info <- [minfo] ]
+    ++
+    [ prettyDecl decl | decl <- decls ]
+
 
 viewPackage :: MonadIO m => View -> Package -> m ()
 viewPackage Interface = viewPackageInterface
@@ -693,7 +704,8 @@ viewPackage Documentation = viewPackageDocs
 
 viewPackageInterface :: MonadIO m => Package -> m ()
 viewPackageInterface Package{..} =
-  viewInTerminalPaged $ P.vsep $ numbered (P.text <$> pModules)
+  viewInTerminalPaged $ P.vsep $
+    mainHeading pTitle : numbered (P.text <$> pModules)
 
 viewPackageDocs :: MonadIO m => Package -> m ()
 viewPackageDocs Package{..} = viewInTerminalPaged $ P.vsep $
@@ -819,7 +831,7 @@ toDecl = \case
 mainHeading :: String -> P.Doc
 mainHeading str = P.vsep
   [ divider
-  , P.text str
+  , P.indent 2 $ P.text str
   , divider
   ]
   where
@@ -859,16 +871,6 @@ viewItemPackageAndModule item = case item of
   Hoogle.Declaration d -> viewItemPackage item P.<+> viewModuleName (Hoogle.dModule d)
   Hoogle.Module _      -> viewItemPackage item
   Hoogle.Package _     -> viewItemPackage item
-
-prettyModule :: Module -> P.Doc
-prettyModule (Module name minfo decls murl) = P.vsep $
-  [ mainHeading name
-  , Haddock.link $  P.text $ getUrl murl
-  ]
-  ++
-  [ prettyHtml info | Just info <- [minfo] ]
-  ++
-  [ prettyDecl decl | decl <- decls ]
 
 prettyDecl :: Declaration -> P.Doc
 prettyDecl Declaration{..} =
