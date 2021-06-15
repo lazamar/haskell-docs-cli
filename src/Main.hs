@@ -42,7 +42,10 @@ cachePolicy :: AppData -> IO Cache.EvictionPolicy
 cachePolicy (AppData root) = do
   let dir = root </> "cache"
   createDirectoryIfMissing True dir
-  return $ Cache.MaxSize (Cache.megabytes 100) dir
+  let mb = 1024 * 1024
+      bytes = Cache.MaxBytes $ 100 * mb
+      age = Cache.MaxAgeDays 20
+  return $ Cache.Evict bytes age (Store dir)
 
 cliOptions :: O.ParserInfo Options
 cliOptions = O.info parser $ O.header " \
