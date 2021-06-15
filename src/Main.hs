@@ -13,6 +13,7 @@ import Docs.CLI.Evaluate
   , runCLI
   )
 
+import Control.Concurrent.Async (withAsync)
 import Control.Applicative (many, (<|>))
 import Control.Monad (void)
 import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
@@ -44,7 +45,7 @@ cachePolicy (AppData root) = do
   createDirectoryIfMissing True dir
   let mb = 1024 * 1024
       bytes = Cache.MaxBytes $ 100 * mb
-      age = Cache.MaxAgeDays 20
+      age = Cache.MaxAgeDays 2
   return $ Cache.Evict bytes age (Store dir)
 
 cliOptions :: O.ParserInfo Options
@@ -68,10 +69,11 @@ main = void $ do
         , sManager = manager
         , sCache = cache
         }
-  runCLI state $
-    case arguments of
-      ""    -> interactive
-      input -> evaluate input
+  withAsync (Cache.enforce policy) $ \_ ->
+    runCLI state $
+      case arguments of
+        ""    -> interactive
+        input -> evaluate input
 
 main' :: IO ()
 main' = void $ do

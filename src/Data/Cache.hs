@@ -1,14 +1,26 @@
 {-# LANGUAGE NumericUnderscores #-}
 -- | Store results of named computations.
-module Data.Cache where
+module Data.Cache
+  ( create
+  , cached
+  , enforce
+  , Store(..)
+  , EvictionPolicy(..)
+  , Cache
+  , MaxBytes(..)
+  , MaxAgeDays(..)
+  )
+  where
 
+import Control.Exception (try, throwIO, fromException, SomeAsyncException(..))
 import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad (void)
 import Data.ByteString.Lazy (ByteString)
 import Data.Time.Clock (UTCTime(..))
 import Data.Traversable (for)
 import Data.Foldable (traverse_)
 import Data.List (isPrefixOf, find, intercalate, partition, sortOn)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, fromMaybe)
 import Control.Concurrent.MVar (MVar)
 import Data.Map.Strict (Map)
 import System.FilePath.Posix ((</>))
@@ -28,8 +40,6 @@ data Cache = Cache
   }
 
 newtype Store = Store FilePath
-newtype Bytes = Bytes Int
-newtype Days = Days Int
 newtype Hash = Hash String
   deriving newtype (Show, Eq, Ord)
 
@@ -84,7 +94,7 @@ enforce = \case
         go :: ([Entry], [Entry]) -> MaxBytes -> [Entry] -> IO ([Entry], [Entry])
         go acc _ [] = return acc
         go (fits, doesnt) (MaxBytes bytes) (entry:rest) = do
-          s <- size store entry
+          s <- fromMaybe 0 <$> size store entry
           let remaining = bytes - s
           if remaining >= 0
             then go (entry:fits, doesnt) (MaxBytes remaining) rest
@@ -101,10 +111,20 @@ enforce = \case
       time < threshold
 
     remove :: Store -> Entry -> IO ()
-    remove store = removeFile . location store
+    remove store = void . trySync . removeFile . location store
 
-    size :: Store -> Entry -> IO Integer
-    size store = getFileSize . location store
+    size :: Store -> Entry -> IO (Maybe Integer)
+    size store = trySync. getFileSize . location store
+
+-- | Catch synchronous exceptions and return Nothing
+-- Asynchronous exceptions will kill the action
+trySync :: IO a -> IO (Maybe a)
+trySync act = do
+  res <- try act
+  case res of
+    Left e | Just (SomeAsyncException _) <- fromException e -> throwIO e
+           | otherwise -> return Nothing
+    Right r -> return $ Just r
 
 location :: Store -> Entry -> FilePath
 location store = fileName store . serialise
