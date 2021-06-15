@@ -277,11 +277,11 @@ parseCommand str = case str of
       "declaration"    -> ViewDeclaration selection
       "ddocumentation" -> ViewDeclaration selection
       -- module
-      "module"         -> ViewModule Interface selection
+      "module"         -> ViewModule Documentation selection
       "mdocumentation" -> ViewModule Documentation selection
       "minterface"     -> ViewModule Interface selection
       -- package
-      "package"        -> ViewPackage Interface selection
+      "package"        -> ViewPackage Documentation selection
       "pdocumentation" -> ViewPackage Documentation selection
       "pinterface"     -> ViewPackage Interface selection
       "quit"           -> Quit
