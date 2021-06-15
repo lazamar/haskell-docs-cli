@@ -19,7 +19,7 @@ import Data.ByteString.Lazy (ByteString)
 import Data.Time.Clock (UTCTime(..))
 import Data.Traversable (for)
 import Data.Foldable (traverse_)
-import Data.List (isPrefixOf, find, intercalate, partition, sortOn)
+import Data.List (isPrefixOf, find, intercalate, sortOn)
 import Data.Maybe (mapMaybe, fromMaybe)
 import Control.Concurrent.MVar (MVar)
 import Data.Map.Strict (Map)
@@ -40,7 +40,7 @@ data Cache = Cache
   }
 
 newtype Store = Store FilePath
-newtype Hash = Hash String
+newtype Hash = Hash Int
   deriving newtype (Show, Eq, Ord)
 
 data EvictionPolicy
@@ -54,8 +54,10 @@ data Entry = Entry
   { entry_hash :: Hash
   , entry_time :: UTCTime
   }
+  deriving (Show, Eq)
 
 newtype SerialisedEntry = SerialisedEntry String
+  deriving Show
 
 create :: MonadIO m => EvictionPolicy -> m Cache
 create policy = Cache policy <$> liftIO (MVar.newMVar mempty)
@@ -84,27 +86,24 @@ enforce = \case
   Evict maxSize maxAge store -> liftIO $ do
     serialised <- readEntriesFrom store
     let entries = sortOn entry_time $ mapMaybe deserialise serialised
-    (oversize, entries') <- overLimit store maxSize entries
-    (overage , _       ) <- overAge maxAge entries'
+    oversize <- overLimit store maxSize entries
+    overage  <- overAge maxAge entries
     traverse_ (remove store) $ oversize ++ overage
   where
-    overLimit :: Store -> MaxBytes -> [Entry] -> IO ([Entry], [Entry])
-    overLimit store b e = go mempty b e
-      where
-        go :: ([Entry], [Entry]) -> MaxBytes -> [Entry] -> IO ([Entry], [Entry])
-        go acc _ [] = return acc
-        go (fits, doesnt) (MaxBytes bytes) (entry:rest) = do
-          s <- fromMaybe 0 <$> size store entry
-          let remaining = bytes - s
-          if remaining >= 0
-            then go (entry:fits, doesnt) (MaxBytes remaining) rest
-            else go (fits, entry:doesnt) (MaxBytes bytes) rest
+    overLimit :: Store -> MaxBytes -> [Entry] -> IO [Entry]
+    overLimit _ _ [] = return []
+    overLimit store (MaxBytes bytes) (entry:rest) = do
+      s <- fromMaybe 0 <$> size store entry
+      let remaining = bytes - s
+      if remaining >= 0
+        then overLimit store (MaxBytes remaining) rest
+        else (entry:) <$> overLimit store (MaxBytes bytes) rest
 
-    overAge :: MaxAgeDays -> [Entry] -> IO ([Entry], [Entry])
+    overAge :: MaxAgeDays -> [Entry] -> IO [Entry]
     overAge (MaxAgeDays days) entries = do
       now <- Time.getCurrentTime
       let threshold = Time.addUTCTime (-Time.nominalDay * fromIntegral days) now
-      return $ partition (olderThan threshold) entries
+      return $ filter (olderThan threshold) entries
 
     olderThan :: UTCTime -> Entry -> Bool
     olderThan threshold (Entry _ time) =
@@ -151,12 +150,12 @@ toEntry name time = Entry
   , entry_time = time
   }
   where
-    hash = Hash $ show $ abs $ Hashable.hash name
+    hash = Hash $ abs $ Hashable.hash name
 
 serialise :: Entry -> SerialisedEntry
 serialise (Entry (Hash hash) (UTCTime day offset)) = SerialisedEntry
   $ intercalate [separator]
-  [ hash, Time.showGregorian day, show (Time.diffTimeToPicoseconds offset) ]
+  [ show hash, Time.showGregorian day, show (Time.diffTimeToPicoseconds offset) ]
 
 separator :: Char
 separator = '-'
@@ -168,7 +167,7 @@ deserialise (SerialisedEntry str) =
     let days = Time.fromGregorian (toInteger year) month day
         diff = Time.picosecondsToDiffTime $ toInteger offset
     in
-    return $ Entry (Hash (show h)) (UTCTime days diff)
+    return $ Entry (Hash h) (UTCTime days diff)
   _ -> Nothing
   where
     splitBy _ [] = []

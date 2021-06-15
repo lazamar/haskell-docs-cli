@@ -45,7 +45,7 @@ cachePolicy (AppData root) = do
   createDirectoryIfMissing True dir
   let mb = 1024 * 1024
       bytes = Cache.MaxBytes $ 100 * mb
-      age = Cache.MaxAgeDays 2
+      age = Cache.MaxAgeDays 20
   return $ Cache.Evict bytes age (Store dir)
 
 cliOptions :: O.ParserInfo Options
