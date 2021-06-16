@@ -136,30 +136,49 @@ complete :: CLI.CompletionFunc (StateT ShellState IO)
 complete (left', _) = do
   let left = reverse left'
   context <- State.gets sContext
-  let prefixes = case context of
+  let options = case context of
         ContextEmpty -> []
         ContextSearch _ tgroups -> map (completion . NonEmpty.head) tgroups
         ContextModule m -> map completion (mDeclarations m)
         ContextPackage p -> pModules p
 
-      completionsFor prefix =
-        [ CLI.Completion
+      asCompletion prefix option =
+        CLI.Completion
           { CLI.replacement = drop (length prefix) option
           , CLI.display = option
           , CLI.isFinished = True
           }
-        | option <- prefixes
-        , prefix `isPrefixOf` option
-        ]
 
-  case left of
+      dropEnd n = reverse . drop n . reverse
+
+      -- drop from begining til after the infix
+      -- quadratic, but only executed in one string so doesn't
+      -- matter very much
+      dropInfix _ [] = []
+      dropInfix inf (_:ys) =
+        if inf `isPrefixOf` ys
+          then drop (length inf) ys
+          else dropInfix inf ys
+
+      completionsFor :: String -> String -> (String , [CLI.Completion])
+      completionsFor l xs
+        | cs@(_:_) <- filter (xs `isPrefixOf`) options =
+          (l, map (asCompletion xs) cs)
+        | Just option <- find (xs `isInfixOf`) options =
+          let newPrefix = dropEnd (length $ dropInfix xs option) option
+              newLeft = reverse newPrefix
+          in completionsFor newLeft newPrefix
+        | otherwise = (l, [])
+
+  return $ case left of
     ':':xs | not (any isSpace xs) , Just cmd <- fillPrefix xs ->
-      return (":", [CLI.simpleCompletion cmd])
+      (":", [CLI.simpleCompletion cmd])
     ':':xs | (_, ' ':'/':prefix) <- break isSpace xs ->
-      return (left', completionsFor prefix)
+      completionsFor left' prefix
     '/':xs ->
-      return (left', completionsFor xs)
-    _ -> return (left', [])
+      completionsFor left' xs
+    _ ->
+      (left', [])
 
 
 
