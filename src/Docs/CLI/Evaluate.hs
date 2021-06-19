@@ -190,13 +190,8 @@ instance MonadCLI M where
 
 runSearch :: String -> M [Hoogle.Item]
 runSearch term = do
-  req <- Http.parseRequest "https://hoogle.haskell.org"
-    <&> Http.setQueryString
-      [ ("mode", Just "json")
-      , ("start", Just "1")
-      , ("hoogle", Just $ Text.encodeUtf8 $ Text.pack term)
-      ]
-  res <- fetch req
+  let url = "https://hoogle.haskell.org?mode=json&start=1&hoogle=" <> term
+  res <- fetch url
   either error return $ Aeson.eitherDecode res
 
 withFirstSearchResult
@@ -504,7 +499,7 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
   -- :pdocumentation <TERM>
   ViewPackage view (Search term) -> do
     let url = hooglePackageUrl term
-    html <- fetch' url
+    html <- fetchHTML url
     let package = parsePackageDocs url html
     State.modify' $ \s -> s{ sContext = ContextPackage package }
     viewPackage view package
@@ -570,14 +565,14 @@ withModule
   -> (Module -> M a)
   -> M a
 withModule url act = do
-  html <- fetch' url
+  html <- fetchHTML url
   let mod = parseModuleDocs url html
   State.modify' $ \s -> s{ sContext = ContextModule mod }
   act mod
 
 withPackage :: PackageUrl -> (Package -> M a) -> M a
 withPackage url act = do
-  html <- fetch' url
+  html <- fetchHTML url
   let package = parsePackageDocs url html
   State.modify' $ \s -> s{ sContext = ContextPackage package }
   act package
@@ -585,7 +580,7 @@ withPackage url act = do
 withPackageForModule :: Module -> (Package -> M a) -> M a
 withPackageForModule mod act = do
   let url = packageUrl $ mUrl mod
-  html <- fetch' url
+  html <- fetchHTML url
   let package = parsePackageDocs url html
   State.modify' $ \s -> s{ sContext = ContextPackage package }
   act package
@@ -662,7 +657,7 @@ promptSelectOne = \case
 withModuleFromPackage :: String -> Package -> (Module -> M a) -> M a
 withModuleFromPackage modName Package{..} act = do
   let url = packageModuleUrl pUrl modName
-  html <- fetch' url
+  html <- fetchHTML url
   let mod = parseModuleDocs url html
   State.modify' $ \s -> s{ sContext = ContextModule mod }
   act mod
@@ -791,7 +786,7 @@ printDoc handle doc = liftIO $ do
 viewSource :: DeclUrl -> M ()
 viewSource durl = do
   url <- sourceLink durl
-  html <- fetch' url
+  html <- fetchHTML url
   viewInEditor (fileInfo url html)
   where
     viewInEditor :: FileInfo -> M ()
@@ -808,14 +803,15 @@ getEditor = getEnv "VISUAL" <|> getEnv "EDITOR" <|> defaultEditor
   where
     defaultEditor = error "no editor selected"
 
-fetch' :: HasUrl a => a -> M HtmlPage
-fetch' x = do
-  req <- liftIO $ Http.parseRequest $ dropAnchor $ getUrl x
-  src <- fetch req
+fetchHTML :: HasUrl a => a -> M HtmlPage
+fetchHTML x = do
+  src <- fetch $ getUrl x
   return (parseHtmlDocument src)
 
-fetch :: Http.Request -> M LB.ByteString
-fetch req = do
+fetch :: Url -> M LB.ByteString
+fetch url = do
+  req <- Http.parseRequest url
+  liftIO $ putStrLn $ "fetching: " <> url
   cache <- State.gets sCache
   cached cache (show req) $ do
       liftIO $ putStrLn "Making HTTP request"
@@ -925,7 +921,7 @@ viewTargetGroup tgroup = viewInTerminalPaged $ P.vsep
 -- | Get URL for source file for a target
 sourceLink :: DeclUrl -> M SourceLink
 sourceLink (DeclUrl murl anchor) = do
-  html <- fetch' murl
+  html <- fetchHTML murl
   let links = sourceLinks murl html
   case lookup anchor links of
     Nothing -> throwError $ unlines $
