@@ -803,27 +803,6 @@ getEditor = getEnv "EDITOR" <|> getEnv "VISUAL" <|> defaultEditor
   where
     defaultEditor = error "no editor selected"
 
-fetchHTML :: HasUrl a => a -> M HtmlPage
-fetchHTML x = do
-  src <- fetch $ getUrl x
-  return (parseHtmlDocument src)
-
-fetch :: Url -> M LB.ByteString
-fetch url = do
-  req <- Http.parseRequest url
-  liftIO $ putStrLn $ "fetching: " <> url
-  cache <- State.gets sCache
-  cached cache (show req) $ do
-      liftIO $ putStrLn "Making HTTP request"
-      manager <- State.gets sManager
-      res <- liftIO $ Http.httpLbs req manager
-      let status = Http.responseStatus res
-      unless (Http.statusIsSuccessful status) $
-        throwError
-          $ "unable to fetch page: "
-          <> Text.unpack (Text.decodeUtf8 $ Http.statusMessage status)
-      return $ Http.responseBody res
-
 moduleResult :: (String, Hoogle.Item -> Maybe Hoogle.Module)
 moduleResult = ("module", toModule)
   where
@@ -951,4 +930,28 @@ packageModuleUrl (PackageUrl purl) moduleName =
       | otherwise = x
 
     stripSuffix x s = maybe s reverse $ stripPrefix x $ reverse s
+
+-- =============================
+--  HTTP requests
+-- =============================
+
+fetchHTML :: HasUrl a => a -> M HtmlPage
+fetchHTML x = do
+  src <- fetch $ getUrl x
+  return (parseHtmlDocument src)
+
+fetch :: Url -> M LB.ByteString
+fetch url = do
+  req <- Http.parseRequest url
+  cache <- State.gets sCache
+  cached cache (show req) $ do
+      liftIO $ putStrLn $ "fetching: " <> url
+      manager <- State.gets sManager
+      res <- liftIO $ Http.httpLbs req manager
+      let status = Http.responseStatus res
+      unless (Http.statusIsSuccessful status) $
+        throwError
+          $ "unable to fetch page: "
+          <> Text.unpack (Text.decodeUtf8 $ Http.statusMessage status)
+      return $ Http.responseBody res
 
