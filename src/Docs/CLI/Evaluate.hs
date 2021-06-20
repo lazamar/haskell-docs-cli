@@ -799,7 +799,7 @@ viewSource durl = do
           Process.callCommand $ unwords [editor, fullpath, line]
 
 getEditor :: IO String
-getEditor = getEnv "VISUAL" <|> getEnv "EDITOR" <|> defaultEditor
+getEditor = getEnv "EDITOR" <|> getEnv "VISUAL" <|> defaultEditor
   where
     defaultEditor = error "no editor selected"
 
