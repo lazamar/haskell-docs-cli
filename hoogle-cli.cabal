@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d9e3f84320b4ff24c372281f333b885d51e2e257d0c40d9863d17a4305704f6c
+-- hash: 19315d713c3b7d0e4c95d6f2290128f169b22751220f6f2955d85e5111a60286
 
 name:           hoogle-cli
 version:        0.1.0.0
@@ -37,7 +37,7 @@ library
       Paths_hoogle_cli
   hs-source-dirs:
       src
-  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses
+  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses ScopedTypeVariables
   build-depends:
       aeson
     , ansi-wl-pprint
@@ -78,7 +78,7 @@ executable hoogle-cli-exe
       Paths_hoogle_cli
   hs-source-dirs:
       src
-  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses
+  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses ScopedTypeVariables
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
   build-depends:
       aeson
@@ -117,7 +117,7 @@ test-suite hoogle-cli-test
       Paths_hoogle_cli
   hs-source-dirs:
       test
-  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses
+  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses ScopedTypeVariables
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       aeson

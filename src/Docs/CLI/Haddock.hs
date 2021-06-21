@@ -472,6 +472,27 @@ anchorLine anchor
           then Left n
           else anchorNodes n (Xml.elementNodes e)
 
+-- | Traverse an acyclic graph depth-first and return list of nodes that
+-- satisfy a predicate in postorder.
+-- The children of notes that satisfy a predicate will not be checked.
+findDeep :: forall a. (a -> [a]) -> (a -> Bool) -> a -> [a]
+findDeep next test root = go root []
+  where
+    go :: a -> [a] -> [a]
+    go x acc
+      | test x = x : acc
+      | otherwise = foldr go acc (next x)
+
+-- We can impement filter with this, but not find.
+transform :: forall a
+  .  (([a] -> [a]) -> a -> a) -- modify children
+  -> (a -> Maybe a)
+  -> a
+  -> Maybe a
+transform overChildren test root = go root
+  where
+    go :: a -> Maybe a
+    go x = overChildren (mapMaybe go) <$> test x
 
 -- =================================
 -- Pretty priting

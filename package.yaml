@@ -58,6 +58,7 @@ default-extensions:
 - GeneralisedNewtypeDeriving
 - DerivingStrategies
 - MultiParamTypeClasses
+- ScopedTypeVariables
 
 library:
   source-dirs: src
