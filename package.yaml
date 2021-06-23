@@ -46,6 +46,7 @@ dependencies:
 - time
 - hashable
 - directory
+- network-uri
 
 default-extensions:
 - ApplicativeDo

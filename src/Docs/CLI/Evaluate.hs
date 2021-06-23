@@ -38,6 +38,7 @@ import System.IO.Temp (withSystemTempFile)
 import System.Exit (exitSuccess)
 import qualified Hoogle as H
 import System.FilePath ((</>))
+import Network.URI (uriToString)
 
 import Docs.CLI.Types
 import Docs.CLI.Haddock as Haddock
@@ -190,8 +191,13 @@ instance MonadCLI M where
 
 runSearch :: String -> M [Hoogle.Item]
 runSearch term = do
-  let url = "https://hoogle.haskell.org?mode=json&start=1&hoogle=" <> term
-  res <- fetch url
+  req <- Http.parseRequest "https://hoogle.haskell.org"
+    <&> Http.setQueryString
+      [ ("mode", Just "json")
+      , ("start", Just "1")
+      , ("hoogle", Just $ Text.encodeUtf8 $ Text.pack term)
+      ]
+  res <- fetch req
   either error return $ Aeson.eitherDecode res
 
 withFirstSearchResult
@@ -709,6 +715,8 @@ viewModuleDocs (Module name minfo decls murl) =
     ++
     [ prettyHtml info | Just info <- [minfo] ]
     ++
+    [""]
+    ++
     [ prettyDecl decl | decl <- decls ]
 
 
@@ -937,15 +945,15 @@ packageModuleUrl (PackageUrl purl) moduleName =
 
 fetchHTML :: HasUrl a => a -> M HtmlPage
 fetchHTML x = do
-  src <- fetch $ getUrl x
+  req <- Http.parseRequest (getUrl x)
+  src <- fetch req
   return (parseHtmlDocument src)
 
-fetch :: Url -> M LB.ByteString
-fetch url = do
-  req <- Http.parseRequest url
+fetch :: Http.Request -> M LB.ByteString
+fetch req = do
   cache <- State.gets sCache
   cached cache (show req) $ do
-      liftIO $ putStrLn $ "fetching: " <> url
+      liftIO $ putStrLn $ "fetching: " <> (uriToString id (Http.getUri req) "")
       manager <- State.gets sManager
       res <- liftIO $ Http.httpLbs req manager
       let status = Http.responseStatus res
