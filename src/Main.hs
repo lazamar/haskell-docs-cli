@@ -14,7 +14,7 @@ import Docs.CLI.Evaluate
   )
 
 import Control.Concurrent.Async (withAsync)
-import Control.Applicative (many, (<|>))
+import Control.Applicative (many, (<|>), optional)
 import Control.Monad (void)
 import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
 import qualified Network.HTTP.Client as Http
@@ -25,17 +25,21 @@ import System.Directory (createDirectoryIfMissing)
 
 import Data.Cache as Cache
 
-newtype Options = Options
-  { arguments :: String
+data Options = Options
+  { optQuery :: String
+  , optAppDataDir :: Maybe FilePath
   }
 
 newtype AppData = AppData FilePath
 
 -- | Create direcotry of app data if it doesn't exist
-mkAppDataDir :: IO AppData
-mkAppDataDir  = do
-  home <- getEnv "HOME" <|> error "HOME environment variable not set"
-  let dir = home </> ".haskell-docs-cli"
+mkAppDataDir :: Maybe FilePath -> IO AppData
+mkAppDataDir mpath = do
+  dir <- case mpath of
+    Just path -> return path
+    Nothing -> do
+      home <- getEnv "HOME" <|> error "HOME environment variable not set"
+      return $ home </> ".haskell-docs-cli"
   createDirectoryIfMissing True dir
   return $ AppData dir
 
@@ -54,14 +58,15 @@ cliOptions = O.info parser $ O.header " \
   \Hoogle is a Haskell API search engine, which allows you to search the Haskell libraries on Stackage by either function name, or by approximate type signature."
   where
     parser = do
-      arguments <- fmap unwords . many $ O.strArgument $ O.metavar "CMD"
+      optQuery <- fmap unwords . many $ O.strArgument $ O.metavar "CMD"
+      optAppDataDir <- optional $ O.strOption $ O.long "data-dir"
       pure $ Options {..}
 
 main :: IO ()
 main = void $ do
   Options{..} <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
-  appData <- mkAppDataDir
+  appData <- mkAppDataDir optAppDataDir
   policy <- cachePolicy appData
   cache <- Cache.create policy
   let state = ShellState
@@ -71,7 +76,7 @@ main = void $ do
         }
   withAsync (Cache.enforce policy) $ \_ ->
     runCLI state $
-      case arguments of
+      case optQuery of
         ""    -> interactive
         input -> evaluate input
 
@@ -79,7 +84,7 @@ main' :: IO ()
 main' = void $ do
   Options{} <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
-  appData <- mkAppDataDir
+  appData <- mkAppDataDir Nothing
   policy <- cachePolicy appData
   cache <- Cache.create policy
   let state = ShellState

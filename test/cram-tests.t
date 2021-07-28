@@ -1,4 +1,4 @@
-  $ alias run="$TESTDIR/../.stack-work/dist/x86_64-osx/Cabal-3.2.1.0/build/hoogle-cli-exe/hoogle-cli-exe"
+  $ alias run="$TESTDIR/../.stack-work/dist/x86_64-osx/Cabal-3.2.1.0/build/hoogle-cli-exe/hoogle-cli-exe --data-dir $TESTDIR/cram-data"
   $ run :dd completeWord +haskeline
   
   \x1b[96m\x1b[1mcompleteWord\x1b[0;96m\x1b[0m   (esc)
@@ -22,3 +22,12 @@
     A word begins either at the start of the line or after an unescaped whitespace
      character.
     
+
+
+
+
+
+
+
+
+
