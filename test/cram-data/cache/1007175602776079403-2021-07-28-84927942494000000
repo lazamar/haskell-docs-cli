@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link href="/package/directory-1.3.6.2/docs/quick-jump.css" rel="stylesheet" type="text/css" title="QuickJump" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css?family=PT+Sans:400,400i,700" rel="stylesheet">
+<link rel="stylesheet" href="/static/hackage.css" type="text/css" />
+<link rel="icon" type="image/png" href="/static/favicon.png" />
+<link rel="search" type="application/opensearchdescription+xml" title="Hackage" href="/packages/opensearch.xml" />
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=UA-83290513-3"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'UA-83290513-3');
+</script>
+
+  <title>
+    directory: Platform-agnostic library for filesystem operations
+  </title>
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:site" content="@hackage" />
+  <meta property="og:url" content="//hackage.haskell.org/package/directory" />
+  <meta property="og:title" content="directory: Platform-agnostic library for filesystem operations" />
+  <meta property="og:description" content="Install via `cabal&nbsp;install&nbsp;directory`. " />
+  <meta property="og:site_name" content="Hackage" />
+  <link rel="canonical" href="https://hackage.haskell.org/package/directory" />
+  <script src="/static/jquery.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+  <base href="//hackage.haskell.org/package/directory-1.3.6.2/" />
+</head>
+
+<body>
+  <div id="page-header">
+
+  <a class="caption" href="/">Hackage :: [Package]</a>
+
+<ul class="links" id="page-menu">
+
+    <li>
+      <form action="/packages/search" method="get" class="search">
+        <button type="submit">Search&nbsp;</button>
+        <input type="text" name="terms" />
+      </form>
+    </li>
+
+    <li><a href="/packages/browse">Browse</a></li>
+
+    <li><a href="/packages/recent">What's new</a></li>
+
+    <li><a href="/upload">Upload</a></li>
+
+    <li><a href="/accounts">User accounts</a></li>
+    
+
+</ul>
+
+</div>
+
+  <div id="content">
+    <h1><a href="//hackage.haskell.org/package/directory">directory</a>: <small>Platform-agnostic library for filesystem operations</small></h1>
+    <div style="font-size: small">
+      [ <a href="/packages/tag/bsd3">bsd3</a>, <a href="/packages/tag/library">library</a>, <a href="/packages/tag/system">system</a> ]
+      [ <a href="/package/directory/tags/edit">Propose Tags </a> ]
+    </div>
+
+    
+
+    <div id="description">
+        <p>This library provides a basic set of operations for manipulating files and
+directories in a portable way.</p>
+    
+        <hr>
+    [<a href="#readme">Skip to Readme</a>]
+    
+    </div>
+
+
+    <div id="properties">
+    <table class="properties">
+      <tbody>
+
+        <tr>
+          <th>Versions <span style="font-weight:normal;font-size: small;">[<a href="/package/directory.rss">RSS</a>]  [<a href="https://pvp.haskell.org/faq">faq</a>]</span></th>
+          <td><a href="/package/directory-1.0.0.0">1.0.0.0</a>, <a href="/package/directory-1.0.0.3">1.0.0.3</a>, <a href="/package/directory-1.0.1.0">1.0.1.0</a>, <a href="/package/directory-1.0.1.1">1.0.1.1</a>, <a href="/package/directory-1.0.1.2">1.0.1.2</a>, <a href="/package/directory-1.1.0.0">1.1.0.0</a>, <a href="/package/directory-1.1.0.1">1.1.0.1</a>, <a href="/package/directory-1.1.0.2">1.1.0.2</a>, <a href="/package/directory-1.2.0.0">1.2.0.0</a>, <a href="/package/directory-1.2.0.1">1.2.0.1</a>, <a href="/package/directory-1.2.1.0">1.2.1.0</a>, <a href="/package/directory-1.2.2.0">1.2.2.0</a>, <a href="/package/directory-1.2.2.1">1.2.2.1</a>, <a href="/package/directory-1.2.3.0">1.2.3.0</a>, <a href="/package/directory-1.2.3.1">1.2.3.1</a>, <a href="/package/directory-1.2.4.0">1.2.4.0</a>, <a href="/package/directory-1.2.5.0">1.2.5.0</a>, <a href="/package/directory-1.2.5.1">1.2.5.1</a>, <a class="deprecated" href="/package/directory-1.2.6.1">1.2.6.1</a>, <a href="/package/directory-1.2.6.2">1.2.6.2</a>, <a href="/package/directory-1.2.6.3">1.2.6.3</a>, <a href="/package/directory-1.2.7.0">1.2.7.0</a>, <a href="/package/directory-1.2.7.1">1.2.7.1</a>, <a href="/package/directory-1.3.0.0">1.3.0.0</a>, <a href="/package/directory-1.3.0.1">1.3.0.1</a>, <a href="/package/directory-1.3.0.2">1.3.0.2</a>, <a href="/package/directory-1.3.1.0">1.3.1.0</a>, <a href="/package/directory-1.3.1.1">1.3.1.1</a>, <a href="/package/directory-1.3.1.2">1.3.1.2</a>, <a href="/package/directory-1.3.1.3">1.3.1.3</a>, <a href="/package/directory-1.3.1.4">1.3.1.4</a>, <a href="/package/directory-1.3.1.5">1.3.1.5</a>, <a href="/package/directory-1.3.2.0">1.3.2.0</a>, <a href="/package/directory-1.3.2.1">1.3.2.1</a>, <a href="/package/directory-1.3.2.2">1.3.2.2</a>, <a href="/package/directory-1.3.3.0">1.3.3.0</a>, <a href="/package/directory-1.3.3.1">1.3.3.1</a>, <a href="/package/directory-1.3.3.2">1.3.3.2</a>, <a href="/package/directory-1.3.4.0">1.3.4.0</a>, <a href="/package/directory-1.3.5.0">1.3.5.0</a>, <a href="/package/directory-1.3.6.0">1.3.6.0</a>, <a href="/package/directory-1.3.6.1">1.3.6.1</a>, <strong>1.3.6.2</strong> (<a href="/package/directory/preferred">info</a>)</td>
+        </tr>
+
+                <tr>
+          <th>Change&nbsp;log</th>
+          <td class="word-wrap"><a href="/package/directory-1.3.6.2/changelog">changelog.md</a></td>
+        </tr>
+        
+
+        <tr>
+          <th>Dependencies</th>
+          <td><span style="white-space: nowrap"><a href="/package/base">base</a> (&gt;=4.5 &amp;&amp; &lt;4.17)</span>, <span style="white-space: nowrap"><a href="/package/filepath">filepath</a> (&gt;=1.3 &amp;&amp; &lt;1.5)</span>, <span style="white-space: nowrap"><a href="/package/time">time</a> (&gt;=1.4 &amp;&amp; &lt;1.12)</span>, <span style="white-space: nowrap"><a href="/package/unix">unix</a> (&gt;=2.5.1 &amp;&amp; &lt;2.9)</span>, <span style="white-space: nowrap"><a href="/package/Win32">Win32</a> (&gt;=2.2.2 &amp;&amp; &lt;2.13)</span><span style="font-size: small"> [<a href="/package/directory-1.3.6.2/dependencies">details</a>]</span></td>
+        </tr>
+
+        <tr>
+          <th>License</th>
+          <td class="word-wrap"><a href="/package/directory-1.3.6.2/src/LICENSE">BSD-3-Clause</a></td>
+        </tr>
+
+        
+
+        <tr>
+          <th>Author</th>
+          <td class="word-wrap"></td>
+        </tr>
+        <tr>
+          <th>Maintainer</th>
+          <td class="word-wrap">libraries@haskell.org</td>
+        </tr>
+
+        
+
+        <!-- Obsolete/deprecated 'Stability' field hidden
+             c.f. http://stackoverflow.com/questions/3841218/conventions-for-stability-field-of-cabal-packages
+        <tr>
+          <th>Stability</th>
+          <td>Unknown</td>
+        </tr>
+        -->
+
+                <tr>
+          <th>Category</th>
+          <td><a href="/packages/#cat:System">System</a></td>
+        </tr>
+        
+
+        
+
+                <tr>
+          <th>Bug&nbsp;tracker</th>
+          <td class="word-wrap">
+            <a href="https://github.com/haskell/directory/issues">
+              https://github.com/haskell/directory/issues
+            </a>
+          </td>
+        </tr>
+        
+
+                <tr>
+          <th>Source&nbsp;repo</th>
+          <td class="word-wrap">head: git clone <a href="https://github.com/haskell/directory">https://github.com/haskell/directory</a></td>
+        </tr>
+        
+
+        <tr>
+          <th>Uploaded</th>
+          <td>by <a href="/user/Rufflewind">Rufflewind</a> at <span title="Mon May 24 08:12:17 UTC 2021">2021-05-24T08:12:17Z</span></td>
+        </tr>
+
+
+                <tr>
+          <th>Distributions</th>
+          <td>Arch:<a href="https://www.archlinux.org/packages/community/x86_64/ghc">1.3.6.0</a>, Fedora:<a href="https://src.fedoraproject.org/rpms/ghc">1.3.6.0</a></td>
+        </tr>
+        
+
+        
+
+        <tr>
+          <th>Downloads</th>
+          <td>116277 total (1048 in the last 30 days)</td>
+        </tr>
+
+        <tr>
+          <th> Rating</th>
+	  <td>(no votes yet)
+	  <span style="font-size: small">[estimated by <a href="https://en.wikipedia.org/wiki/Bayesian_average">Bayesian average</a>]</span></td>
+	</tr>
+
+	<tr>
+	  <th>Your&nbsp;Rating</th>
+	  <td>
+            <ul class="star-rating">
+              <li class="star uncool" id="1">&lambda;</li>
+              <li class="star uncool" id="2">&lambda;</li>
+              <li class="star uncool" id="3">&lambda;</li>
+	    </ul>
+          
+          </td>
+        </tr>
+        <tr>
+          <th>Status</th>
+	  <td><a href="https://matrix.hackage.haskell.org/package/directory"><img src="https://matrix.hackage.haskell.org/api/v2/packages/directory/badge" alt="Hackage Matrix CI" style="max-width:100%;" /></a><br/>Docs available <span style="font-size: small">[<a href="/package/directory-1.3.6.2/reports/1">build log</a>]</span><br />Last success reported on 2021-05-24 <span style="font-size: small">[<a href="/package/directory-1.3.6.2/reports/">all 1 reports</a>]</span></td>
+        </tr>
+      </tbody>
+    </table>
+    </div> <!-- /properties -->
+
+    <div id="badges" style="margin-top: 20px;">
+        <img src="https://img.shields.io/static/v1?label=Build&message=InstallOk&color=success" />
+        
+        
+        <img src="https://img.shields.io/static/v1?label=Documentation&message=Available&color=success" />
+    </div>
+
+    <div id="modules">
+      <h2>Modules</h2><p style="font-size: small">[<a href="/package/directory-1.3.6.2/docs/doc-index.html">Index</a>] [<a id="quickjump-trigger" href="#">Quick Jump</a>]</p><div id="module-list"><ul class="modules"><li><i>System</i><ul class="modules"><li><span class="module"><a href="/package/directory-1.3.6.2/docs/System-Directory.html">System.Directory</a></span><ul class="modules"><li><span class="module"><a href="/package/directory-1.3.6.2/docs/System-Directory-Internal.html">System.Directory.Internal</a></span><ul class="modules"><li><span class="module"><a href="/package/directory-1.3.6.2/docs/System-Directory-Internal-Prelude.html">System.Directory.Internal.Prelude</a></span></li></ul></li></ul></li></ul></li></ul></div>
+    </div>
+
+    
+
+    <div id="downloads">
+      <h2>Downloads</h2><ul><li><a href="/package/directory-1.3.6.2/directory-1.3.6.2.tar.gz">directory-1.3.6.2.tar.gz</a> [<a href="/package/directory-1.3.6.2/src/">browse</a>] (Cabal source package)</li><li><a href="/package/directory-1.3.6.2/directory.cabal">Package description</a> (as included in the package)</li></ul>
+    </div>
+
+    <div id="maintainer-corner">
+      <h4>Maintainer's Corner</h4>
+      <p>For package maintainers and hackage trustees</p>
+      <ul>
+        <li>
+          <a href="//hackage.haskell.org/package/directory/maintain">
+            edit package information
+          </a>
+        </li>
+      </ul>
+      <p>Candidates</p>
+      <ul>
+        <li>
+          <a href="/package/directory-1.3.6.2/candidate">1.3.6.2</a>
+        </li>
+      </ul>
+    </div>
+
+        <hr />
+    <div id="readme-container">
+      <h2 id="readme">Readme for directory-1.3.6.2</h2>
+      [<a href="#description">back to package description</a>]
+      <div class="embedded-author-content"><h1 id="directory"><code>directory</code></h1>
+<p><a href="https://hackage.haskell.org/package/directory"><img src="https://img.shields.io/hackage/v/directory.svg" alt="Hackage" /></a>
+<a href="https://github.com/haskell/directory/actions"><img src="https://github.com/haskell/directory/actions/workflows/build.yml/badge.svg" alt="Build status" /></a>
+<a href="http://packdeps.haskellers.com/feed?needle=directory"><img src="https://img.shields.io/hackage-deps/v/directory.svg" alt="Dependencies status" /></a></p>
+<p>Documentation can be found on <a href="https://hackage.haskell.org/package/directory">Hackage</a>.
+Changes between versions are recorded in the <a href="changelog.md">change log</a>.</p>
+<h2 id="building-from-git-repository">Building from Git repository</h2>
+<p>When building this package directly from the Git repository, one must run
+<code>autoreconf -fi</code> to generate the <code>configure</code> script needed by <code>cabal configure</code>.  This requires <a href="https://gnu.org/software/autoconf">Autoconf</a> to be installed.</p>
+<pre><code>autoreconf -fi
+cabal install
+</code></pre>
+<p>There is no need to run the <code>configure</code> script manually however, as <code>cabal configure</code> does that automatically.</p>
+</div>
+    </div>
+    
+  </div> <!-- /content -->
+
+  <style>
+  div#overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #000;
+    opacity: 0.5;
+    filter: alpha(opacity=50);
+  }
+
+  div#modal {
+    position: absolute;
+    width: 200px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 14px;
+    padding: 8px;
+  }
+
+  div#modal #content {
+    border-radius: 8px;
+    background: #fff;
+    padding: 20px;
+  }
+
+  div#modal #close {
+    position: absolute;
+    background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAbCAYAAABm409WAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAABCdJREFUeNqcVl1IbFUUnjNzr47enLFkvKUoDNk1S0kxDPHBH4gCTfHJH4jgYgrpg1APmqjQS2gggiLViyBdkEAxjARFSPBBfPCv/LcRS5tSlLzXMcdxZvWt3d6HmTkzXW8LPs45a6/1rbX3XmvvYzL9hxBRC/AjRZcD4BGQE41Di0JciMfnQDF/n5+fm2ZmZkxnZ2e6TWFhoSknJ4T3a03TmkxPE5C/q9JbX1+nmpoaslgsxEPhSE9Pp6GhIbq5uVEuU8DztyLv7e2NShwOzIRcLpdy/S4auQNws0VHR8etiIORmppKh4eHKshXkQLwZtH4+Pgzkyvk5+cHL1dOMLmTNV6vV6xrsFNxcTHV1tZSSkpKiL6srIyam5spLS0tRM97IuWRHsDv97ezZmRkxJDV3t4enZ6e0sDAADkcDqGrqqqizc1NwdLe3m7YeFXCeoBAIPADa8rLyw0BZmdnhfX19TX19fVRY2OjTg4/amhoMPisra2J8YuLizeY3wzDfVY4nU6DcW5uLq2srAiHy8tLQi+I96urK1EM8fHxBp/h4WGV1EMOYOF3VsTExETdPO4JJZx5T08Pmc3miPZc4iwej+dTMweAwxOOZLfbja2uaSabzcaFoOtQKSYkY0pISIhY8jzGgqLx8zMO0xXp8XKEZ1NZWUk7Ozv6smxvb6vsaHBwkJKTkw0+XOossP2AAzx3dHQkeqClpcVgPDY2pm9yW1sblZSU0OLiotD5fD6qqKgIsefu56pj6ezsfJ0DJMzNzX3MCt798ADd3d20sbFBXV1dhOXSj4apqSmanp6mvLy8EPvq6mpBfnJysoLvFBEAyHK73aL26uvrQxx4CYqKigzVkp2dTRkZGSHnFb9vbW2JAPPz84MqwD3glYmJiS954Pj4WDj+n6Oiv7//3w47ONjhEx24zwGsQDrw9tLS0s/qmH7WINwTSpqamrqgywXE0X0XSAYKkpKSPgL572zEGxW+XNHuhNHRUZ28tbX1G+jLgQwuINHJgA14ALyXmJj4GY6H35TD8vKyqB5utri4OEHKs+Py5Y7l7mbBrefDMfI9xj8E3gJeBGLVtRkr1+tN4H3gC1TPT1gyD91CJicnT7Kysr6F3yfAOzJ7Lh6LupMt3HDAC3I/MoFXgZfr6upeKy0tvV9QUHAvMzPzjtVq1fb39/27u7vehYWFx2gq1+rq6hZseWP5+QvwB/AY8GlBl/8dIF4GSQWcEmmAg08SOVO2vQE8AP8FuAE+ml3Ar8CfktzLB7UW9odxV87ELjee1/ElGSBRjvGeXQMXwKkkdMusOeATOe6P9NuiZhIr+8MuiW2yImJkAJ7BpSQ7B/6S73/zsnDmssoi/hdpkkQFskrEyhlqMjvO8ioIPqkPPPXHK2hMkwWgYFbXuCRThIFwYiX/CDAA8quvgv5A6LkAAAAASUVORK5CYII=) 0 0 no-repeat;
+    width: 24px;
+    height: 27px;
+    display: block;
+    text-indent: -9999px;
+    top: -7px;
+    right: -7px;
+  }
+
+  .cool {
+    color: gold;
+    text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000;
+  }
+
+  .uncool {
+    color: white;
+    text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000;
+  }
+
+  .star-rating {
+    margin: 0;
+    list-style-type: none;
+    font-size: 150%;
+    color: black;
+  }
+
+  .star-rating li {
+    float: left;
+    margin: 0 1% 0 1%;
+    cursor: pointer;
+  }
+
+  .clear-rating {
+    font-size: small;
+  }
+
+</style>
+
+<script>
+  // Modals
+  var modal = (function() {
+    var
+      method = {},
+      overlay,
+      modal,
+      content,
+      close;
+
+    // Center the modal in the viewport
+    method.center = function() {
+      var top, left;
+
+      top = Math.max($(window).height() - modal.outerHeight(), 0) / 2;
+      left = Math.max($(window).width() - modal.outerWidth(), 0) / 2;
+
+      modal.css({
+        top: top + $(window).scrollTop(),
+        left: left + $(window).scrollLeft()
+      });
+    };
+
+    // Open the modal
+    method.open = function(settings) {
+      content.empty().append(settings.content);
+
+      modal.css({
+        width: settings.width || 'auto',
+        height: settings.height || 'auto'
+      });
+
+      method.center();
+      $(window).bind('resize.modal', method.center);
+      modal.show();
+      overlay.show();
+    };
+
+    // Close the modal
+    method.close = function() {
+      modal.hide();
+      overlay.hide();
+      content.empty();
+      $(window).unbind('resize.modal');
+    };
+
+    // Generate the HTML and add it to the document
+    overlay = $('<div id="overlay"></div>');
+    modal = $('<div id="modal"></div>');
+    content = $('<div id="content"></div>');
+    close = $('<a id="close" href="#">close</a>');
+
+    modal.hide();
+    overlay.hide();
+    modal.append(content, close);
+
+    $(document).ready(function() {
+      $('body').append(overlay, modal);
+    });
+
+    close.click(function(e) {
+      e.preventDefault();
+      method.close();
+    });
+
+    return method;
+  }());
+</script>
+
+<script>
+  // Voting
+  var votesUrl = '/package/directory/votes';
+  var star = {
+    "id"       : undefined,
+    "selected" : false
+  };
+  $('.star').mouseenter(function() {
+    if (star.selected === false) {
+      fill_stars(this.id, "in");
+    }
+  });
+  $('.star').mouseleave(function() {
+    if (star.selected === false) {
+      fill_stars(this.id, "out");
+    }
+  });
+  $('.star').click(function() {
+    fill_stars(3, "out");
+    fill_stars(this.id, "in");
+    star.selected = true;
+    star.id = this.id;
+    var formData = {
+      score: this.id
+    }
+    $.post(votesUrl, formData).done(function(data) {
+        if(data != "Package voted for successfully") {
+            modal.open({ content: data});
+	}
+    });
+  });
+  $('.clear-rating').click(function(e) {
+    e.preventDefault()
+    fill_stars(3, "out");
+    star.selected = false;
+    $.ajax({
+      url: votesUrl,
+      type: 'DELETE',
+      success: function(result) {
+        if(result != "Package vote removed successfully") {
+          modal.open({ content: result });
+	}
+      }
+    });
+  });
+  $(function() {
+       var userRating = parseInt($("#userRating").val(),10);
+       if(userRating > 0) {
+         fill_stars(userRating,"in")
+         star.selected = true;
+         star.id       = userRating;
+       }
+  });
+  var fill_stars = function(num, direction) {
+    if (direction === "in")
+      for (i = 0; i <= parseInt(num); i++)
+        $("#" + i).removeClass('uncool').addClass('cool');
+    else
+      for (i = 0; i <= parseInt(num); i++)
+        $("#" + i).removeClass('cool').addClass('uncool');
+  }
+</script>
+
+ <script>
+    // Responsive layout change
+    $(function()  {
+          var onResize = function() {
+              if(jQuery(window).width()<=950) {
+                 jQuery("#properties").insertAfter(jQuery("#description"));
+              } else {
+                  jQuery("#properties").insertBefore(jQuery("#description"));
+             }
+            }
+            $(window).resize(onResize);
+            onResize();
+     });
+</script>
+  <div style="clear:both"></div>
+  <div id="footer">
+  <p>
+    Produced by <a href="/">hackage</a> and <a href="http://haskell.org/cabal/">Cabal</a> 3.2.1.0.
+  </p>
+</div>
+
+    <script src="/package/directory-1.3.6.2/docs/quick-jump.min.js" type="text/javascript"></script>
+  <script type="text/javascript"> quickNav.init("/package/directory-1.3.6.2/docs", function(toggle) {var t = document.getElementById('quickjump-trigger');if (t) {t.onclick = function(e) { e.preventDefault(); toggle(); };}}); </script>
+  
+</body>
+</html>
