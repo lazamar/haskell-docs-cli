@@ -22,6 +22,7 @@ import qualified Options.Applicative as O
 import System.Environment (getEnv)
 import System.FilePath.Posix ((</>))
 import System.Directory (createDirectoryIfMissing)
+import System.IO (hIsTerminalDevice, stdout)
 
 import Data.Cache as Cache
 
@@ -69,10 +70,12 @@ main = void $ do
   appData <- mkAppDataDir optAppDataDir
   policy <- cachePolicy appData
   cache <- Cache.create policy
+  isTTY <- hIsTerminalDevice stdout
   let state = ShellState
         { sContext = ContextEmpty
         , sManager = manager
         , sCache = cache
+        , sNoColours = not isTTY
         }
   withAsync (Cache.enforce policy) $ \_ ->
     runCLI state $
@@ -91,6 +94,7 @@ main' = void $ do
         { sContext = ContextEmpty
         , sManager = manager
         , sCache = cache
+        , sNoColours = False
         }
   runCLI state $ do
     evaluateCmd (ViewDeclaration  $ Search "completeWord +haskeline")

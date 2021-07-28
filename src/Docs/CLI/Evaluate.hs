@@ -68,6 +68,7 @@ data ShellState = ShellState
   { sContext :: Context
   , sManager :: Http.Manager
   , sCache :: Cache
+  , sNoColours :: Bool
   }
 
 type TargetGroup = NonEmpty Hoogle.Item
@@ -675,7 +676,7 @@ withModuleFromPackageIx ix p act =
 withDeclFromModuleIx :: Int -> Module -> (Declaration -> M a) -> M a
 withDeclFromModuleIx ix = withIx ix . mDeclarations
 
-viewSearchResults :: MonadIO m => [TargetGroup] -> m ()
+viewSearchResults :: [TargetGroup] -> M ()
 viewSearchResults
   = viewInTerminal
   . P.vsep
@@ -683,20 +684,20 @@ viewSearchResults
   . numbered
   . map viewSummary
 
-viewDeclaration :: MonadIO m => Declaration -> m ()
+viewDeclaration :: Declaration -> M ()
 viewDeclaration = viewInTerminalPaged . prettyDecl
 
-viewDeclarationWithLink :: MonadIO m => Declaration -> m ()
+viewDeclarationWithLink :: Declaration -> M ()
 viewDeclarationWithLink decl = viewInTerminalPaged $ P.vcat
   [ prettyDecl decl
   , Haddock.link $ P.text $ getUrl (dDeclUrl decl)
   ]
 
-viewModule :: MonadIO m => View -> Module -> m ()
+viewModule :: View -> Module -> M ()
 viewModule Interface = viewModuleInterface
 viewModule Documentation = viewModuleDocs
 
-viewModuleInterface :: MonadIO m => Module -> m ()
+viewModuleInterface :: Module -> M ()
 viewModuleInterface mod =
   viewInTerminalPaged
   . P.vsep
@@ -706,7 +707,7 @@ viewModuleInterface mod =
   . mDeclarations
   $ mod
 
-viewModuleDocs :: MonadIO m => Module -> m ()
+viewModuleDocs :: Module -> M ()
 viewModuleDocs (Module name minfo decls murl) =
   viewInTerminalPaged $ P.vsep $
     [ mainHeading name
@@ -720,16 +721,16 @@ viewModuleDocs (Module name minfo decls murl) =
     [ prettyDecl decl | decl <- decls ]
 
 
-viewPackage :: MonadIO m => View -> Package -> m ()
+viewPackage :: View -> Package -> M ()
 viewPackage Interface = viewPackageInterface
 viewPackage Documentation = viewPackageDocs
 
-viewPackageInterface :: MonadIO m => Package -> m ()
+viewPackageInterface :: Package -> M ()
 viewPackageInterface Package{..} =
   viewInTerminalPaged $ P.vsep $
     mainHeading pTitle : numbered (P.text <$> pModules)
 
-viewPackageDocs :: MonadIO m => Package -> m ()
+viewPackageDocs :: Package -> M ()
 viewPackageDocs Package{..} = viewInTerminalPaged $ P.vsep $
   [ mainHeading $ case pSubTitle of
       Nothing -> pTitle
@@ -749,11 +750,15 @@ viewPackageDocs Package{..} = viewInTerminalPaged $ P.vsep $
       section title (prettyHtml body)
 
 
-viewInTerminal :: MonadIO m => P.Doc -> m ()
-viewInTerminal = printDoc stdout
+viewInTerminal :: P.Doc -> M ()
+viewInTerminal doc = do
+  noColours <- State.gets sNoColours
+  printDoc noColours stdout doc
 
-viewInTerminalPaged :: MonadIO m => P.Doc -> m ()
-viewInTerminalPaged doc = withPager $ \handle -> printDoc handle doc
+viewInTerminalPaged :: P.Doc -> M ()
+viewInTerminalPaged doc = do
+  noColours <- State.gets sNoColours
+  withPager $ \handle -> printDoc noColours handle doc
 
 withPager :: MonadIO m => (Handle -> IO ())  -> m ()
 withPager act = liftIO $
@@ -785,10 +790,13 @@ withPager act = liftIO $
 maxWidth :: Int
 maxWidth = 80
 
-printDoc :: MonadIO m => Handle -> P.Doc -> m ()
-printDoc handle doc = liftIO $ do
+printDoc :: MonadIO m => Bool -> Handle -> P.Doc -> m ()
+printDoc noColours handle doc = liftIO $ do
   width <- min maxWidth . maybe maxWidth Terminal.width <$> Terminal.size
-  P.displayIO handle $ P.renderSmart 1 width doc
+  P.displayIO handle $ P.renderSmart 1 width $
+    if noColours
+       then P.plain doc
+       else doc
   hPutStrLn handle ""
 
 viewSource :: DeclUrl -> M ()
