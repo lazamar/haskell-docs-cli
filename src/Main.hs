@@ -9,7 +9,6 @@ import Docs.CLI.Evaluate
   , Context(..)
   , Cmd(..)
   , Selection(..)
-  , View(..)
   , runCLI
   )
 
@@ -29,6 +28,7 @@ import Data.Cache as Cache
 data Options = Options
   { optQuery :: String
   , optAppDataDir :: Maybe FilePath
+  , optUnlimitedCache :: Bool
   }
 
 newtype AppData = AppData FilePath
@@ -44,13 +44,14 @@ mkAppDataDir mpath = do
   createDirectoryIfMissing True dir
   return $ AppData dir
 
-cachePolicy :: AppData -> IO Cache.EvictionPolicy
-cachePolicy (AppData root) = do
+cachePolicy :: Bool -> AppData -> IO Cache.EvictionPolicy
+cachePolicy unlimitedCache (AppData root) = do
   let dir = root </> "cache"
   createDirectoryIfMissing True dir
   let mb = 1024 * 1024
-      bytes = Cache.MaxBytes $ 100 * mb
-      age = Cache.MaxAgeDays 20
+      (bytes, age) = if unlimitedCache
+        then (Cache.NoMaxBytes         , Cache.NoMaxAge)
+        else (Cache.MaxBytes $ 100 * mb, Cache.MaxAgeDays 20)
   return $ Cache.Evict bytes age (Store dir)
 
 cliOptions :: O.ParserInfo Options
@@ -61,6 +62,7 @@ cliOptions = O.info parser $ O.header " \
     parser = do
       optQuery <- fmap unwords . many $ O.strArgument $ O.metavar "CMD"
       optAppDataDir <- optional $ O.strOption $ O.long "data-dir"
+      optUnlimitedCache <- O.flag False True $ O.long "unlimited-cache"
       pure $ Options {..}
 
 main :: IO ()
@@ -68,7 +70,7 @@ main = void $ do
   Options{..} <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
   appData <- mkAppDataDir optAppDataDir
-  policy <- cachePolicy appData
+  policy <- cachePolicy optUnlimitedCache appData
   cache <- Cache.create policy
   isTTY <- hIsTerminalDevice stdout
   let state = ShellState
@@ -88,7 +90,7 @@ main' = void $ do
   Options{} <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
   appData <- mkAppDataDir Nothing
-  policy <- cachePolicy appData
+  policy <- cachePolicy False appData
   cache <- Cache.create policy
   let state = ShellState
         { sContext = ContextEmpty

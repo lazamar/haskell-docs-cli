@@ -47,8 +47,8 @@ data EvictionPolicy
   = Evict MaxBytes MaxAgeDays Store
   | NoStorage
 
-newtype MaxBytes   = MaxBytes Integer
-newtype MaxAgeDays = MaxAgeDays Int
+data MaxBytes   = MaxBytes Integer | NoMaxBytes
+data MaxAgeDays = MaxAgeDays Int | NoMaxAge
 
 data Entry = Entry
   { entry_hash :: Hash
@@ -92,6 +92,7 @@ enforce = \case
   where
     overLimit :: Store -> MaxBytes -> [Entry] -> IO [Entry]
     overLimit _ _ [] = return []
+    overLimit _ NoMaxBytes _ = return []
     overLimit store (MaxBytes bytes) (entry:rest) = do
       s <- fromMaybe 0 <$> size store entry
       let remaining = bytes - s
@@ -100,6 +101,7 @@ enforce = \case
         else (entry:) <$> overLimit store (MaxBytes bytes) rest
 
     overAge :: MaxAgeDays -> [Entry] -> IO [Entry]
+    overAge NoMaxAge _ = return []
     overAge (MaxAgeDays days) entries = do
       now <- Time.getCurrentTime
       let threshold = Time.addUTCTime (-Time.nominalDay * fromIntegral days) now
