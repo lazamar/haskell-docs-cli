@@ -27,10 +27,11 @@ module Docs.CLI.Haddock
 
 import Docs.CLI.Types
 
+import Data.Bifunctor (first)
 import Data.List.Extra (unescapeHTML)
 import Data.Foldable (fold)
 import Control.Monad (foldM)
-import Data.Maybe (fromMaybe, mapMaybe, listToMaybe)
+import Data.Maybe (fromMaybe, mapMaybe, listToMaybe, fromJust)
 import Data.List hiding (groupBy)
 import Data.List.Extra (breakOn)
 import Data.Maybe (isJust)
@@ -63,6 +64,7 @@ data Declaration = Declaration
   { dAnchors    :: Set Anchor
   , dAnchor     :: Anchor -- ^ Main declaration anchor
   , dSignature  :: Html
+  , dSignatureExpanded :: Html -- ^ Signature with argument documentation, if available.
   , dContent    :: [Html]
   , dModuleUrl  :: ModuleUrl
   , dDeclUrl    :: DeclUrl
@@ -145,31 +147,116 @@ parseModuleDocs murl (HtmlPage root) = pageContent "moduleDocs" murl $ do
     , mUrl = murl
     }
 
+noBullets :: Text
+noBullets = "hcli-no-bullets"
+
 parseDeclaration :: ModuleUrl -> Html -> Maybe Declaration
 parseDeclaration moduleUrl (Html el) = do
   decl <- findM (is "top" . class_) [el]
-  ([sig], content) <- return
+  ([sigHead], elements) <- return
     $ partition (is "src" . class_) $ children decl
-
-  let anchor = case listToMaybe $ anchors sig of
+  (argsDocs, content) <- return
+    $ first listToMaybe
+    $ partition (is argumentsDocsClass . class_) elements
+  let
+      anchor = case listToMaybe $ anchors sigHead of
         Nothing -> error "declaration with no anchor in signature"
         Just a  -> a
-      signature = asTag "div" sig
+
+      args = case argsDocs of
+        Just ds -> findDeep children (is "src" . class_) ds
+        Nothing -> []
+
+      signature = asTag "div"
+        $ foldl' mergeNodes (removeTrailingSpaces $ fromJust $ removeInvisible sigHead)
+        $ map (removeLeadingSpaces . addTrailingSpace) args
+
+      signatureExpanded = fromMaybe signature $ listToMaybe $ do
+        argsTable <- findM (is "table". tag) $ maybe [] children argsDocs
+        return sigHead
+          { Xml.elementNodes =
+              Xml.elementNodes sigHead <>
+                [ Xml.NodeElement lineBreak
+                , Xml.NodeElement $ setClass noBullets argsTable
+                ]
+          }
 
   return Declaration
     { dAnchors = Set.fromList $ anchors el
     , dAnchor = anchor
     , dSignature = Html signature
+    , dSignatureExpanded = Html signatureExpanded
     , dContent = Html <$> content
     , dModuleUrl = moduleUrl
     , dDeclUrl = DeclUrl moduleUrl anchor
     , dCompletion = Text.unpack $ innerText signature
     }
   where
+    argumentsDocsClass = "subs arguments"
+
+    lineBreak = Xml.Element (Xml.Name "br" Nothing Nothing) mempty []
+
+    removeInvisible =
+      filterDeep $ \node -> case node of
+        Xml.NodeElement e
+          | class_ e `elem` ["fixity", "selflink"] -> Nothing
+        _ -> Just node
+
     asTag t e = e
       { Xml.elementName =
           (Xml.elementName e) { Xml.nameLocalName = t }
       }
+
+    setClass name e = e
+      { Xml.elementAttributes =
+          Map.insert
+            (Xml.Name "class" Nothing Nothing)
+            name
+            (Xml.elementAttributes e)
+      }
+
+
+    mergeNodes e1 e2 = e2
+      { Xml.elementNodes = Xml.elementNodes e1 <> Xml.elementNodes e2
+      }
+
+    addTrailingSpace e = e
+      { Xml.elementNodes = Xml.elementNodes e <> [Xml.NodeContent " " ]
+      }
+
+    removeTrailingSpaces e = res
+      where Xml.NodeElement res = head $ snd $ rm False [Xml.NodeElement e]
+
+    rm True xs = (True, xs)
+    rm False [] = (False, [])
+    rm False (x:xs) = case x of
+      Xml.NodeInstruction _ -> rm False xs
+      Xml.NodeContent txt -> (True, Xml.NodeContent (Text.dropWhileEnd isSpace txt) : xs)
+      Xml.NodeComment _ -> rm False xs
+      Xml.NodeElement e ->
+        let (removed, nodes') = fmap reverse $ rm False $ reverse $ Xml.elementNodes e
+            e' = Xml.NodeElement e { Xml.elementNodes = nodes' }
+        in
+        if removed
+          then (True, e':xs)
+          else (e':) <$> rm False xs
+
+    removeLeadingSpaces e = res
+      where Xml.NodeElement res = head $ snd $ rmLeading False [Xml.NodeElement e]
+
+    rmLeading True xs = (True, xs)
+    rmLeading False [] = (False, [])
+    rmLeading False (x:xs) = case x of
+      Xml.NodeInstruction _ -> rmLeading False xs
+      Xml.NodeContent txt -> (True, Xml.NodeContent (Text.dropWhile isSpace txt) : xs)
+      Xml.NodeComment _ -> rmLeading False xs
+      Xml.NodeElement e ->
+        let (removed, nodes') = rmLeading False $ Xml.elementNodes e
+            e' = Xml.NodeElement e { Xml.elementNodes = nodes' }
+        in
+        if removed
+          then (True, e':xs)
+          else (e':) <$> rmLeading False xs
 
 parsePackageDocs :: PackageUrl -> HtmlPage -> Package
 parsePackageDocs url (HtmlPage root) = pageContent "packageDocs" url $ do
@@ -313,7 +400,7 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
       where stack' = (tag e, class_ e):stack
     unXMLChildren stack e =
       case mapMaybe (unXMLNode stack) (Xml.elementNodes e) of
-        [] -> Nothing
+        [] -> Just [] -- TODO does this break stuff?
         xs -> Just xs
     unXMLNode stack = \case
       Xml.NodeInstruction _ -> Nothing
@@ -376,6 +463,7 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
        "a"       -> Just . link
        "b"       -> Just . P.bold
        "p"       -> Just . linebreak
+       "br"      -> const $ Just P.hardline
        "dt"      -> Just . P.bold . linebreak
        "dd"      -> Just . linebreak
        "summary" -> Just . linebreak
@@ -394,8 +482,14 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
                     $ mapMaybe (unXMLElement stack) (children e)
        "td"      | isInstanceDetails e -> hide
                  | otherwise -> Just
-       "table"   -> const
-                    $ Just .  flip mappend P.hardline . P.vsep . map bullet
+       "table"   -> let
+                        punctuate =
+                          if underClass noBullets
+                            then P.indent 2
+                            else bullet
+                    in
+                    const
+                    $ Just .  flip mappend P.hardline . P.vsep . map punctuate
                     $ mapMaybe (unXMLElement stack)
                     $ joinSubsections (children e)
        -- don't show instance details
@@ -483,13 +577,23 @@ findDeep next test root = go root []
       | test x = x : acc
       | otherwise = foldr go acc (next x)
 
+filterDeep :: (Xml.Node -> Maybe Xml.Node) -> Xml.Element -> Maybe Xml.Element
+filterDeep test el = unNodeElement <$> transform f test (Xml.NodeElement el)
+  where
+    unNodeElement (Xml.NodeElement e) = e
+    unNodeElement _ = error "unNodeElement"
+
+    f g node = case node of
+      Xml.NodeElement e -> Xml.NodeElement e { Xml.elementNodes = g $ Xml.elementNodes e }
+      _ -> node
+
 -- We can impement filter with this, but not find.
 transform :: forall a
-  .  (([a] -> [a]) -> a -> a) -- modify children
-  -> (a -> Maybe a)
+  .  (([a] -> [a]) -> a -> a) -- ^ apply transformation to children
+  -> (a -> Maybe a)           -- ^ transform one element
   -> a
   -> Maybe a
-transform overChildren test root = go root
+transform overChildren test = go
   where
     go :: a -> Maybe a
     go x = overChildren (mapMaybe go) <$> test x

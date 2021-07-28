@@ -88,4 +88,4 @@ main' = void $ do
         , sCache = cache
         }
   runCLI state $ do
-    evaluateCmd (ViewModule Documentation $ Search "Data.Set")
+    evaluateCmd (ViewDeclaration  $ Search "completeWord +haskeline")

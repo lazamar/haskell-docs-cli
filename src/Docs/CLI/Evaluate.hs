@@ -876,7 +876,7 @@ viewItemPackageAndModule item = case item of
 
 prettyDecl :: Declaration -> P.Doc
 prettyDecl Declaration{..} =
-  P.vsep $ map prettyHtml (dSignature:dContent)
+  P.vsep $ map prettyHtml (dSignatureExpanded:dContent)
 
 lookupDecl :: Anchor -> Module -> Maybe Declaration
 lookupDecl anchor (Module _ _ decls _) =
