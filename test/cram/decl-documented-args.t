@@ -1,7 +1,5 @@
-  $ alias run="$TESTDIR/../../.stack-work/dist/x86_64-osx/Cabal-3.2.1.0/build/hoogle-cli-exe/hoogle-cli-exe --data-dir $TESTDIR/cram-data --unlimited-cache"
-
 A function that has documentation for its arguments
-  $ run :dd completeWord +haskeline
+  $ $TESTDIR/run.sh :dd completeWord +haskeline
   
   completeWord  
     :: Monad m 

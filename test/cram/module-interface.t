@@ -1,7 +1,5 @@
-  $ alias run="$TESTDIR/../../.stack-work/dist/x86_64-osx/Cabal-3.2.1.0/build/hoogle-cli-exe/hoogle-cli-exe --data-dir $TESTDIR/cram-data --unlimited-cache"
-
 Argument documentation being rendered in single lines
-  $ run :mi System.Console.Haskeline
+  $ $TESTDIR/run.sh :mi System.Console.Haskeline
   ================================================================================
     System.Console.Haskeline
   ================================================================================

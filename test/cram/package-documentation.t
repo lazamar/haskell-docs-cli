@@ -1,7 +1,5 @@
-  $ alias run="$TESTDIR/../../.stack-work/dist/x86_64-osx/Cabal-3.2.1.0/build/hoogle-cli-exe/hoogle-cli-exe --data-dir $TESTDIR/cram-data --unlimited-cache"
-
 A full package documentation
-  $ run :pd directory
+  $ $TESTDIR/run.sh :pd directory
   ================================================================================
     directory: Platform-agnostic library for filesystem operations
   ================================================================================

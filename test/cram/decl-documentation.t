@@ -1,7 +1,5 @@
-  $ alias run="$TESTDIR/../../.stack-work/dist/x86_64-osx/Cabal-3.2.1.0/build/hoogle-cli-exe/hoogle-cli-exe --data-dir $TESTDIR/cram-data --unlimited-cache"
-
 A class with code examples, different methods, and different headings
-  $ run :dd Bifunctor
+  $ $TESTDIR/run.sh :dd Bifunctor
   class Bifunctor p where 
   
     A bifunctor is a type constructor that takes two type arguments and is a 
@@ -142,6 +140,69 @@ A class with code examples, different methods, and different headings
         Since: base-4.8.0.0
         
     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
