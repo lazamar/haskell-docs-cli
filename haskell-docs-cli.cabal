@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 0724c986ae747fcd451bd5e6e20f8d555383d54a07c72fa8802ad3b90ce0a1d2
+-- hash: adad638579a2e7a9123b24d2fb810449323f5afb9001c2242d55462633f757dc
 
 name:           haskell-docs-cli
 version:        0.1.0.0
@@ -12,7 +12,7 @@ description:    Please see the README on GitHub at <https://github.com/githubuse
 homepage:       https://github.com/githubuser/haskell-docs-cli#readme
 bug-reports:    https://github.com/githubuser/haskell-docs-cli/issues
 author:         Marcelo Lazaroni
-maintainer:     example@example.com
+maintainer:     Marcelo Lazaroni
 copyright:      2021 Marcelo Lazaroni
 license:        BSD3
 license-file:   LICENSE
@@ -34,7 +34,7 @@ library
       Docs.CLI.Types
       Main
   other-modules:
-      Paths_hoogle_cli
+      Paths_haskell_docs_cli
   hs-source-dirs:
       src
   default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses ScopedTypeVariables
@@ -76,7 +76,7 @@ executable hdc
       Docs.CLI.Haddock
       Docs.CLI.Hoogle
       Docs.CLI.Types
-      Paths_hoogle_cli
+      Paths_haskell_docs_cli
   hs-source-dirs:
       src
   default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses ScopedTypeVariables
@@ -94,8 +94,8 @@ executable hdc
     , filepath
     , hashable
     , haskeline
-    , hoogle
     , haskell-docs-cli
+    , hoogle
     , html-conduit
     , http-client
     , http-client-tls
@@ -116,7 +116,7 @@ test-suite haskell-docs-cli-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      Paths_hoogle_cli
+      Paths_haskell_docs_cli
   hs-source-dirs:
       test
   default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses ScopedTypeVariables
@@ -134,8 +134,8 @@ test-suite haskell-docs-cli-test
     , filepath
     , hashable
     , haskeline
-    , hoogle
     , haskell-docs-cli
+    , hoogle
     , html-conduit
     , http-client
     , http-client-tls
