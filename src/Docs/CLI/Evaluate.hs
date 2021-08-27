@@ -316,7 +316,7 @@ parseCommand str = case str of
 interactive :: M ()
 interactive = loop $ do
   printContext
-  input <- fromMaybe "" <$> getInputLine "hoogle> "
+  input <- fromMaybe "" <$> getInputLine "haskell-docs> "
   evaluate input
   where
     onError = return $ Right ()
