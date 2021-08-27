@@ -9,7 +9,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-18.04, macos-10.15, windows-2019]
+        os: [ubuntu-18.04, macos-10.15]
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
@@ -33,7 +33,7 @@ jobs:
           dir=$(stack path --dist-dir)/build/hdc
           cp "$dir/hdc" /package/hdc
           cp -r README.md package/
-          
+
       - name: Upload artifact
         uses: actions/upload-artifact@v1
         with:
