@@ -56,8 +56,8 @@ cachePolicy unlimitedCache (AppData root) = do
 
 cliOptions :: O.ParserInfo Options
 cliOptions = O.info parser $ O.header " \
-  \Hoogle CLI is a command line interface to Hoogle.\
-  \Hoogle is a Haskell API search engine, which allows you to search the Haskell libraries on Stackage by either function name, or by approximate type signature."
+  \Haskell-docs-cli is a command line interface to Hoogle and Hackage.\
+  \Hoogle is a Haskell API search engine, which allows you to search the Haskell libraries on Hackage by either function name, or by approximate type signature."
   where
     parser = do
       optQuery <- fmap unwords . many $ O.strArgument $ O.metavar "CMD"
