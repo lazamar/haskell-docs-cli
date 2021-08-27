@@ -1,0 +1,94 @@
+name: Haskell CI
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+jobs:
+  build:
+    name: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-18.04, macos-10.15, windows-2019]
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v2
+
+      - name: Install stack
+        run: curl -sSL https://get.haskellstack.org/ | sh
+
+      - name: Cache dependencies
+        uses: actions/cache@v1
+        with:
+          path: ~/.stack
+          key: ${{ runner.os }}-store-${{ hashFiles('generator/stack.yaml.lock') }}-${{ hashFiles('generator/generator.cabal') }}
+
+      - name: Build
+        run: stack build
+
+      - name: Package generator
+        shell: bash
+        run: |
+          mkdir package
+          dir=$(stack path --dist-dir)/build/hdc
+          cp "$dir/hdc" /package/hdc
+          cp -r README.md package/
+          
+      - name: Upload artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: haskell-docs-cli-${{ runner.os }}
+          path: package
+
+
+
+
+
+
+
+
+
+
+
+
+
+name: Haskell CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-haskell@v1
+      with:
+        ghc-version: '8.10.3'
+        cabal-version: '3.2'
+
+    - name: Cache
+      uses: actions/cache@v1
+      env:
+        cache-name: cache-cabal
+      with:
+        path: ~/.cabal
+        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
+        restore-keys: |
+          ${{ runner.os }}-build-${{ env.cache-name }}-
+          ${{ runner.os }}-build-
+          ${{ runner.os }}-
+
+    - name: Install dependencies
+      run: |
+        cabal update
+        cabal build --only-dependencies --enable-tests --enable-benchmarks
+    - name: Build
+      run: cabal build --enable-tests --enable-benchmarks all
+    - name: Run tests
+      run: cabal test all
