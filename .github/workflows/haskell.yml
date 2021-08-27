@@ -20,7 +20,10 @@ jobs:
       - name: Build
         run: stack build
 
-      - name: Package generator
+      - name: Run tests
+        run: cram ./test/cram
+
+      - name: Create package
         shell: bash
         run: |
           mkdir package
