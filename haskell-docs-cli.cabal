@@ -6,11 +6,11 @@ cabal-version: 1.12
 --
 -- hash: 0724c986ae747fcd451bd5e6e20f8d555383d54a07c72fa8802ad3b90ce0a1d2
 
-name:           hoogle-cli
+name:           haskell-docs-cli
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/hoogle-cli#readme>
-homepage:       https://github.com/githubuser/hoogle-cli#readme
-bug-reports:    https://github.com/githubuser/hoogle-cli/issues
+description:    Please see the README on GitHub at <https://github.com/githubuser/haskell-docs-cli#readme>
+homepage:       https://github.com/githubuser/haskell-docs-cli#readme
+bug-reports:    https://github.com/githubuser/haskell-docs-cli/issues
 author:         Marcelo Lazaroni
 maintainer:     example@example.com
 copyright:      2021 Marcelo Lazaroni
@@ -23,7 +23,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/hoogle-cli
+  location: https://github.com/githubuser/haskell-docs-cli
 
 library
   exposed-modules:
@@ -68,7 +68,7 @@ library
     , xml-conduit
   default-language: Haskell2010
 
-executable hoogle-cli-exe
+executable hdc
   main-is: Main.hs
   other-modules:
       Data.Cache
@@ -95,7 +95,7 @@ executable hoogle-cli-exe
     , hashable
     , haskeline
     , hoogle
-    , hoogle-cli
+    , haskell-docs-cli
     , html-conduit
     , http-client
     , http-client-tls
@@ -112,7 +112,7 @@ executable hoogle-cli-exe
     , xml-conduit
   default-language: Haskell2010
 
-test-suite hoogle-cli-test
+test-suite haskell-docs-cli-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
@@ -135,7 +135,7 @@ test-suite hoogle-cli-test
     , hashable
     , haskeline
     , hoogle
-    , hoogle-cli
+    , haskell-docs-cli
     , html-conduit
     , http-client
     , http-client-tls

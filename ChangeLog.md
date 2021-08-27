@@ -1,3 +1,3 @@
-# Changelog for hoogle-cli
+# Changelog for haskell-docs-cli
 
 ## Unreleased changes

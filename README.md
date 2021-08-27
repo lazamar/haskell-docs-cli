@@ -1,1 +1,1 @@
-# hoogle-cli
+# haskell-docs-cli
