@@ -24,7 +24,7 @@ jobs:
         run: pip install cram
 
       - name: Run tests
-        run: cram ./test/cram
+        run: cram --preserve-env ./test/cram
 
       - name: Create package
         shell: bash
