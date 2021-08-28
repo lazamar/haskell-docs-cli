@@ -31,7 +31,7 @@ jobs:
         run: |
           mkdir package
           dir=$(stack path --dist-dir)/build/hdc
-          cp "$dir/hdc" /package/hdc
+          cp "$dir/hdc" package/hdc
           cp -r README.md package/
 
       - name: Upload artifact
