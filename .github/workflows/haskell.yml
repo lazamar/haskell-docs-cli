@@ -5,7 +5,7 @@ on:
       - '**.md'
 jobs:
   build:
-    name: build
+    name: Build and Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -19,6 +19,9 @@ jobs:
 
       - name: Build
         run: stack build
+
+      - name: Install cram
+        run: pip install cram
 
       - name: Run tests
         run: cram ./test/cram
