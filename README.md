@@ -8,6 +8,18 @@ Staying in the command line avoids switching two and from the browser, makes it
 easier to seach a documentation page, jumping through its content, and to view
 the source code of libraries.
 
+## Installation
+
+Download the project and run `stack install`.
+
+It will make the `hdc` executable available in your path.
+
+```
+git clone https://github.com/lazamar/haskell-docs-cli.git
+cd haskell-docs-cli
+stack install
+```
+
 ## Functionalities
 
 ### Search Hoogle
