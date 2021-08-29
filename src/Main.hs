@@ -18,6 +18,7 @@ import Control.Monad (void)
 import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
 import qualified Network.HTTP.Client as Http
 import qualified Options.Applicative as O
+import qualified Options.Applicative.Help.Pretty as OP
 import System.Environment (getEnv)
 import System.FilePath.Posix ((</>))
 import System.Directory (createDirectoryIfMissing)
@@ -55,14 +56,26 @@ cachePolicy unlimitedCache (AppData root) = do
   return $ Cache.Evict bytes age (Store dir)
 
 cliOptions :: O.ParserInfo Options
-cliOptions = O.info parser $ O.header " \
-  \Haskell-docs-cli is a command line interface to Hoogle and Hackage.\
-  \Hoogle is a Haskell API search engine, which allows you to search the Haskell libraries on Hackage by either function name, or by approximate type signature."
+cliOptions = O.info (O.helper <*> parser) $ mconcat
+  [ O.fullDesc
+  , O.header "haskell-docs-cli"
+  , O.progDescDoc $ Just $ OP.vcat
+    [ ""
+    , "Search Hoogle and view Hackage documentation from the command line."
+    , "Search modules, packages, types and functions by name or by approximate type signature."
+    ]
+  ]
   where
     parser = do
       optQuery <- fmap unwords . many $ O.strArgument $ O.metavar "CMD"
-      optAppDataDir <- optional $ O.strOption $ O.long "data-dir"
-      optUnlimitedCache <- O.flag False True $ O.long "unlimited-cache"
+      optAppDataDir <- optional $ O.strOption $ mconcat
+        [ O.long "data-dir"
+        , O.help "Specify the directory for application data such as requests cache to be stored."
+        ]
+      optUnlimitedCache <- O.flag False True $ mconcat
+        [ O.long "unlimited-cache"
+        , O.help "Disable cache eviction"
+        ]
       pure $ Options {..}
 
 main :: IO ()
