@@ -282,7 +282,7 @@ parseCommand :: String -> Either String Cmd
 parseCommand str = case str of
   (':':xs) -> do
     let (mcmd, args) = bimap fillPrefix (drop 1) $ break isSpace xs
-    cmd <- maybe (Left "Unknown command") Right mcmd
+    cmd <- maybe (Left unknownCommand) Right mcmd
     let selection
           | null args                = SelectContext
           | ('/':prefix) <- args     = SelectByPrefix prefix
@@ -306,12 +306,17 @@ parseCommand str = case str of
       "pdocumentation" -> ViewPackage Documentation selection
       "pinterface"     -> ViewPackage Interface selection
       "quit"           -> Quit
-      _ -> error $ "Unknown command: " <> cmd
+      _                -> error unknownCommand
   -- no colon cases
   ('/':prefix)              -> Right $ ViewAny Interface $ SelectByPrefix prefix
   x | Just n <- readMaybe x -> Right $ ViewAny Interface $ SelectByIndex n
   []                        -> Right $ ViewAny Interface SelectContext
   _                         -> Right $ ViewAny Interface $ Search str
+  where
+    unknownCommand =
+      "*** Unknown command. Type :help for help."
+
+
 
 interactive :: M ()
 interactive = do
