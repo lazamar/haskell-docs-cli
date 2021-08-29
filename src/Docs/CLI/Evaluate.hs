@@ -323,7 +323,7 @@ interactive = do
   printGreeting
   loop $ do
     printContext
-    input <- fromMaybe "" <$> getInputLine "haskell-docs> "
+    input <- fromMaybe "" <$> getInputLine "> "
     evaluate input
   where
     onError = return $ Right ()
