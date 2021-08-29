@@ -314,10 +314,12 @@ parseCommand str = case str of
   _                         -> Right $ ViewAny Interface $ Search str
 
 interactive :: M ()
-interactive = loop $ do
-  printContext
-  input <- fromMaybe "" <$> getInputLine "haskell-docs> "
-  evaluate input
+interactive = do
+  printGreeting
+  loop $ do
+    printContext
+    input <- fromMaybe "" <$> getInputLine "haskell-docs> "
+    evaluate input
   where
     onError = return $ Right ()
 
@@ -333,6 +335,15 @@ interactive = loop $ do
         ContextSearch t _ -> viewInTerminal $ P.text $ "search: " <> t
         ContextModule m   -> viewInTerminal $ P.text $ "module: " <> mTitle m
         ContextPackage p  -> viewInTerminal $ P.text $ "package: " <> pTitle p
+
+printGreeting :: M ()
+printGreeting = viewInTerminal $ P.vcat
+  [ P.black "---- "
+      <> P.blue "haskell-docs-cli"
+      <> P.black " ----------------------------------------------------------"
+  , P.black "Say :help for help and :quit to exit"
+  , P.black "--------------------------------------------------------------------------------"
+  ]
 
 evaluate :: String -> M ()
 evaluate input =
