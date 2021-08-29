@@ -271,7 +271,8 @@ commands = map CmdInfo
         "" )
   , ("src <selector>",
         ViewDeclarationSource,
-        "View the source code of a function or type")
+        "View the source code of a function or type" <> P.linebreak
+        <> "Set the editor with the 'EDITOR' environment variable.")
   -- declaration
   , ("declaration <selector>",
         ViewDeclaration,
