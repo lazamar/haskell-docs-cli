@@ -4,7 +4,7 @@ This package allows you to search [Hoogle](https://hoogle.haskell.org/) and to
 navigate [Hackage](https://hackage.haskell.org/) documentation from the command
 line.
 
-Staying in the command line avoids switching two and from the browser, makes it
+Staying in the command line avoids switching to and from the browser, makes it
 easier to seach a documentation page, jumping through its content, and to view
 the source code of libraries.
 
