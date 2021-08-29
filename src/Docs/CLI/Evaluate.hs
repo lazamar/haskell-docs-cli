@@ -25,7 +25,6 @@ import Data.Foldable (toList)
 import Data.Function (on)
 import Data.Functor ((<&>))
 import Data.List.NonEmpty (NonEmpty)
-import Data.Bifunctor (bimap)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Text.Read (readMaybe)
 import Data.Maybe (fromMaybe, mapMaybe, listToMaybe)
@@ -90,6 +89,7 @@ data Cmd
   | ViewDeclaration Selection
   | ViewModule View Selection
   | ViewPackage View Selection
+  | Help
   | Quit
 
 data Selection
@@ -173,8 +173,8 @@ complete (left', _) = do
         | otherwise = (l, [])
 
   return $ case left of
-    ':':xs | not (any isSpace xs) , Just cmd <- fillPrefix xs ->
-      (":", [CLI.simpleCompletion cmd])
+    ':':xs | not (any isSpace xs) , Just (cmd,_,_) <- cmdFromPrefix xs ->
+      (":", [CLI.simpleCompletion $ takeWhile (not . isSpace) cmd])
     ':':xs | (_, ' ':'/':prefix) <- break isSpace xs ->
       completionsFor left' prefix
     '/':xs ->
@@ -255,72 +255,51 @@ groupBy f vs = go mempty vs
         Nothing -> (out, m)
         Just v -> (v:out, Map.delete key m)
 
-commands :: [String]
+commands :: [(String, Selection -> Cmd, P.Doc)]
 commands =
-  [ "documentation"
-  , "interface"
-  , "src"
-
-  , "declaration"
-  , "ddocumentation"
-
-  , "module"
-  , "mdocumentation"
-  , "minterface"
-
-  , "package"
-  , "pdocumentation"
-  , "pinterface"
-
-  , "quit"
+  --any
+  [ ("documentation <selector>", ViewAny Documentation, "") -- this can come out?
+  , ("interface <selector>", ViewAny Interface, "" )
+  , ("src <selector>", ViewDeclarationSource, "View the source code of a function or type")
+  -- declaration
+  , ("declaration <selector>", ViewDeclaration, "View the Hackage documentation for a function or type")
+  , ("ddocumentation <selector>", ViewDeclaration, "Alias of :declaration")
+  -- module
+  , ("module <selector>", ViewModule Documentation, "View documentation for a module matching a selector")
+  , ("mdocumentation <selector>", ViewModule Documentation, "Alias of :module")
+  , ("minterface <selector>", ViewModule Interface, "View a module's interface")
+  -- package
+  , ("package <selector>", ViewPackage Documentation, "View documentation for a package matching a selector")
+  , ("pdocumentation <selector>", ViewPackage Documentation, "Alias of :package")
+  , ("pinterface <selector>", ViewPackage Interface, "View a package's interface")
+  , ("help", const Help, "View this help text")
+  , ("quit", const Quit, "Exit the program")
   ]
 
-fillPrefix :: String -> Maybe String
-fillPrefix v = find (v `isPrefixOf`) commands
+cmdFromPrefix :: String -> Maybe (String, Selection -> Cmd, P.Doc)
+cmdFromPrefix v = find (\(name,_,_) -> v `isPrefixOf` name) commands
 
 parseCommand :: String -> Either String Cmd
 parseCommand str = case str of
   (':':xs) -> do
-    let (mcmd, args) = bimap fillPrefix (drop 1) $ break isSpace xs
-    cmd <- maybe (Left unknownCommand) Right mcmd
-    let selection
+    let (typedCommand, args) = drop 1 <$> break isSpace xs
+        selection
           | null args                = SelectContext
           | ('/':prefix) <- args     = SelectByPrefix prefix
           | Just n <- readMaybe args = SelectByIndex n
           | otherwise                = Search args
-
-    Right $ case cmd of
-      -- any
-      "documentation"  -> ViewAny Documentation selection
-      "interface"      -> ViewAny Interface selection
-      "src"            -> ViewDeclarationSource selection
-      -- declaration
-      "declaration"    -> ViewDeclaration selection
-      "ddocumentation" -> ViewDeclaration selection
-      -- module
-      "module"         -> ViewModule Documentation selection
-      "mdocumentation" -> ViewModule Documentation selection
-      "minterface"     -> ViewModule Interface selection
-      -- package
-      "package"        -> ViewPackage Documentation selection
-      "pdocumentation" -> ViewPackage Documentation selection
-      "pinterface"     -> ViewPackage Interface selection
-      "quit"           -> Quit
-      _                -> error unknownCommand
+    case cmdFromPrefix typedCommand of
+      Just (_, toCmd, _) -> Right (toCmd selection)
+      Nothing -> Left "*** Unknown command. Type :help for help."
   -- no colon cases
   ('/':prefix)              -> Right $ ViewAny Interface $ SelectByPrefix prefix
   x | Just n <- readMaybe x -> Right $ ViewAny Interface $ SelectByIndex n
   []                        -> Right $ ViewAny Interface SelectContext
   _                         -> Right $ ViewAny Interface $ Search str
-  where
-    unknownCommand =
-      "*** Unknown command. Type :help for help."
-
-
 
 interactive :: M ()
 interactive = do
-  printGreeting
+  viewInTerminal greeting
   loop $ do
     printContext
     input <- fromMaybe "" <$> getInputLine "> "
@@ -341,8 +320,8 @@ interactive = do
         ContextModule m   -> viewInTerminal $ P.text $ "module: " <> mTitle m
         ContextPackage p  -> viewInTerminal $ P.text $ "package: " <> pTitle p
 
-printGreeting :: M ()
-printGreeting = viewInTerminal $ P.vcat
+greeting :: P.Doc
+greeting = P.vcat
   [ P.black "---- "
       <> P.blue "haskell-docs-cli"
       <> P.black " ----------------------------------------------------------"
@@ -360,6 +339,7 @@ evaluate input =
 
 evaluateCmd :: Cmd -> M ()
 evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
+  Help -> viewInTerminal helpText
   Quit -> liftIO exitSuccess
 
   -- pressed enter without typing anything
@@ -545,6 +525,33 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
       ContextModule m    -> withPackageForModule m (viewPackage view)
       ContextPackage p   -> viewPackage view p
 
+helpText :: P.Doc
+helpText = P.vcat
+  [ hcommands
+  , ""
+  , hselectors
+  ]
+  where
+    showItems :: [(String, P.Doc)] -> P.Doc
+    showItems items =
+      let maxNameWidth = maximum $ map (length . fst) items in
+      P.indent 2 $ P.vcat
+        [ P.fillBreak (maxNameWidth + 2) (P.pretty name) P.<+> P.align description
+        | (name,description) <- items ]
+
+    hcommands =  P.vcat
+      [ "Commands:"
+      , showItems [(":" <> cmd, txt) | (cmd,_,txt) <- commands ]
+      ]
+
+    hselectors = P.vcat
+      [ "Selectors:"
+      , showItems
+          [ ("<int>", "select an option by index")
+          , ("/<str>", "select an option by prefix")
+          , ("<str>", "search for an option")
+          ]
+      ]
 targetGroupDocumentation :: TargetGroup -> M ()
 targetGroupDocumentation tgroup = do
   let item = NonEmpty.head tgroup
