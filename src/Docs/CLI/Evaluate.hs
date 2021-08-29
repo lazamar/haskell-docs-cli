@@ -173,8 +173,8 @@ complete (left', _) = do
         | otherwise = (l, [])
 
   return $ case left of
-    ':':xs | not (any isSpace xs) , Just (cmd,_,_) <- cmdFromPrefix xs ->
-      (":", [CLI.simpleCompletion $ takeWhile (not . isSpace) cmd])
+    ':':xs | not (any isSpace xs) , Just cinfo <- cmdInfoFromPrefix xs ->
+      (":", [CLI.simpleCompletion $ commandName cinfo])
     ':':xs | (_, ' ':'/':prefix) <- break isSpace xs ->
       completionsFor left' prefix
     '/':xs ->
@@ -255,29 +255,60 @@ groupBy f vs = go mempty vs
         Nothing -> (out, m)
         Just v -> (v:out, Map.delete key m)
 
-commands :: [(String, Selection -> Cmd, P.Doc)]
-commands =
+newtype CmdInfo = CmdInfo (String, Selection -> Cmd, P.Doc)
+
+commandName :: CmdInfo -> String
+commandName (CmdInfo (name, _,_)) = takeWhile (not . isSpace) name
+
+commands :: [CmdInfo]
+commands = map CmdInfo
   --any
-  [ ("documentation <selector>", ViewAny Documentation, "") -- this can come out?
-  , ("interface <selector>", ViewAny Interface, "" )
-  , ("src <selector>", ViewDeclarationSource, "View the source code of a function or type")
+  [ ("documentation <selector>",
+        ViewAny Documentation,
+        "") -- this can come out?
+  , ("interface <selector>",
+        ViewAny Interface,
+        "" )
+  , ("src <selector>",
+        ViewDeclarationSource,
+        "View the source code of a function or type")
   -- declaration
-  , ("declaration <selector>", ViewDeclaration, "View the Hackage documentation for a function or type")
-  , ("ddocumentation <selector>", ViewDeclaration, "Alias of :declaration")
+  , ("declaration <selector>",
+        ViewDeclaration,
+        "View the Hackage documentation for a function or type")
+  , ("ddocumentation <selector>",
+        ViewDeclaration,
+        "Alias of :declaration")
   -- module
-  , ("module <selector>", ViewModule Documentation, "View documentation for a module matching a selector")
-  , ("mdocumentation <selector>", ViewModule Documentation, "Alias of :module")
-  , ("minterface <selector>", ViewModule Interface, "View a module's interface")
+  , ("module <selector>",
+        ViewModule Documentation,
+        "View documentation for a module matching a selector")
+  , ("mdocumentation <selector>",
+        ViewModule Documentation,
+        "Alias of :module")
+  , ("minterface <selector>",
+        ViewModule Interface,
+        "View a module's interface")
   -- package
-  , ("package <selector>", ViewPackage Documentation, "View documentation for a package matching a selector")
-  , ("pdocumentation <selector>", ViewPackage Documentation, "Alias of :package")
-  , ("pinterface <selector>", ViewPackage Interface, "View a package's interface")
-  , ("help", const Help, "View this help text")
-  , ("quit", const Quit, "Exit the program")
+  , ("package <selector>",
+        ViewPackage Documentation,
+        "View documentation for a package matching a selector")
+  , ("pdocumentation <selector>",
+        ViewPackage Documentation,
+        "Alias of :package")
+  , ("pinterface <selector>",
+        ViewPackage Interface,
+        "View a package's interface")
+  , ("help",
+        const Help,
+        "View this help text")
+  , ("quit",
+        const Quit,
+        "Exit the program")
   ]
 
-cmdFromPrefix :: String -> Maybe (String, Selection -> Cmd, P.Doc)
-cmdFromPrefix v = find (\(name,_,_) -> v `isPrefixOf` name) commands
+cmdInfoFromPrefix :: String -> Maybe CmdInfo
+cmdInfoFromPrefix v = find (\cmd -> v `isPrefixOf` commandName cmd) commands
 
 parseCommand :: String -> Either String Cmd
 parseCommand str = case str of
@@ -288,8 +319,8 @@ parseCommand str = case str of
           | ('/':prefix) <- args     = SelectByPrefix prefix
           | Just n <- readMaybe args = SelectByIndex n
           | otherwise                = Search args
-    case cmdFromPrefix typedCommand of
-      Just (_, toCmd, _) -> Right (toCmd selection)
+    case cmdInfoFromPrefix  typedCommand of
+      Just (CmdInfo (_, toCmd, _)) -> Right (toCmd selection)
       Nothing -> Left "*** Unknown command. Type :help for help."
   -- no colon cases
   ('/':prefix)              -> Right $ ViewAny Interface $ SelectByPrefix prefix
@@ -530,6 +561,9 @@ helpText = P.vcat
   [ hcommands
   , ""
   , hselectors
+  , ""
+  , hexamples
+  , ""
   ]
   where
     showItems :: [(String, P.Doc)] -> P.Doc
@@ -541,7 +575,7 @@ helpText = P.vcat
 
     hcommands =  P.vcat
       [ "Commands:"
-      , showItems [(":" <> cmd, txt) | (cmd,_,txt) <- commands ]
+      , showItems [(":" <> cmd, txt) | CmdInfo (cmd,_,txt) <- commands ]
       ]
 
     hselectors = P.vcat
@@ -550,6 +584,18 @@ helpText = P.vcat
           [ ("<int>", "select an option by index")
           , ("/<str>", "select an option by prefix")
           , ("<str>", "search for an option")
+          ]
+      ]
+
+    hexamples = P.vcat
+      [ "Examples:"
+      , showItems
+          [ ("takeWhile", "View Hoogle search results for 'takeWhile'")
+          , (":package containers", "View package documentation for the 'containers' package")
+          , (":module Data.List", "View module documentation for the 'Data.List' module")
+          , (":src insertWith", "View the source for the first Hoogle result for 'insertWith'")
+          , (":package 2", "View package documentation for the item with index 2 in the current context")
+          , (":module /tak", "View module documentation for the first item with prefix 'tak' in the current context")
           ]
       ]
 targetGroupDocumentation :: TargetGroup -> M ()
