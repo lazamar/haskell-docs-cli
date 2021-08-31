@@ -1,6 +1,6 @@
 # haskell-docs-cli
 
-This package allows you to search [Hoogle](https://hoogle.haskell.org/) and to
+This package allows you to perform [Hoogle](https://hoogle.haskell.org/) searches and to
 navigate [Hackage](https://hackage.haskell.org/) documentation from the command
 line.
 
@@ -22,9 +22,9 @@ stack install
 
 ## Functionalities
 
-### Search Hoogle
+### Search using Hoogle
 
-Just like Hoogle, just type a function name or
+Just like in Hoogle, just type a function name or
 signature to search for matching entries in all of Hackage.
 
 You can select an option by typing its number or by searching for its name with
