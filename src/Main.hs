@@ -9,6 +9,8 @@ import Docs.CLI.Evaluate
   , Context(..)
   , Cmd(..)
   , Selection(..)
+  , HackageUrl(..)
+  , HoogleUrl(..)
   , runCLI
   , defaultHackageUrl
   , defaultHoogleUrl
@@ -17,6 +19,7 @@ import Docs.CLI.Evaluate
 import Control.Concurrent.Async (withAsync)
 import Control.Applicative (many, (<|>), optional)
 import Control.Monad (void)
+import Data.Maybe (fromMaybe)
 import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
 import qualified Network.HTTP.Client as Http
 import qualified Options.Applicative as O
@@ -32,6 +35,8 @@ data Options = Options
   { optQuery :: String
   , optAppDataDir :: Maybe FilePath
   , optUnlimitedCache :: Bool
+  , optHoogle :: Maybe HoogleUrl
+  , optHackage :: Maybe HackageUrl
   }
 
 newtype AppData = AppData FilePath
@@ -78,6 +83,14 @@ cliOptions = O.info (O.helper <*> parser) $ mconcat
         [ O.long "unlimited-cache"
         , O.help "Disable cache eviction"
         ]
+      optHoogle <- optional $ fmap HoogleUrl $ O.strOption $ mconcat
+        [ O.long "hoogle"
+        , O.help "Address of Hoogle instance to be used"
+        ]
+      optHackage <- optional $ fmap HackageUrl $ O.strOption $ mconcat
+        [ O.long "hackage"
+        , O.help "Address of Hackage instance to be used"
+        ]
       pure $ Options {..}
 
 main :: IO ()
@@ -93,8 +106,8 @@ main = void $ do
         , sManager = manager
         , sCache = cache
         , sNoColours = not isTTY
-        , sHoogle = defaultHoogleUrl
-        , sHackage = defaultHackageUrl
+        , sHoogle = fromMaybe defaultHoogleUrl optHoogle
+        , sHackage = fromMaybe defaultHackageUrl optHackage
         }
   withAsync (Cache.enforce policy) $ \_ ->
     runCLI state $

@@ -9,6 +9,8 @@ module Docs.CLI.Evaluate
   , Cmd(..)
   , Selection(..)
   , View(..)
+  , HackageUrl(..)
+  , HoogleUrl(..)
   , runCLI
   , defaultHoogleUrl
   , defaultHackageUrl
