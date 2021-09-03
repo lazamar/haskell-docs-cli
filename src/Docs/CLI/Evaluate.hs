@@ -9,8 +9,9 @@ module Docs.CLI.Evaluate
   , Cmd(..)
   , Selection(..)
   , View(..)
-  , packageUrl
   , runCLI
+  , defaultHoogleUrl
+  , defaultHackageUrl
   ) where
 
 import Prelude hiding (mod)
@@ -68,6 +69,8 @@ data ShellState = ShellState
   , sManager :: Http.Manager
   , sCache :: Cache
   , sNoColours :: Bool
+  , sHoogle :: HoogleUrl
+  , sHackage :: HackageUrl
   }
 
 type TargetGroup = NonEmpty Hoogle.Item
@@ -113,6 +116,18 @@ newtype M a = M { runM :: ExceptT String (CLI.InputT (StateT ShellState IO)) a }
 
 instance MonadState ShellState M where
   state f = M $ lift $ lift $ State.state f
+
+newtype HoogleUrl = HoogleUrl Url
+
+newtype HackageUrl = HackageUrl Url
+
+defaultHoogleUrl :: HoogleUrl
+defaultHoogleUrl =
+  HoogleUrl "https://hoogle.haskell.org"
+
+defaultHackageUrl :: HackageUrl
+defaultHackageUrl =
+  HackageUrl "https://hackage.haskell.org"
 
 runCLI :: ShellState -> M a -> IO (Either String a)
 runCLI state program = do
@@ -182,8 +197,6 @@ complete (left', _) = do
     _ ->
       (left', [])
 
-
-
 class MonadCLI m where
   getInputLine :: String -> m (Maybe String)
 
@@ -192,7 +205,8 @@ instance MonadCLI M where
 
 runSearch :: String -> M [Hoogle.Item]
 runSearch term = do
-  req <- Http.parseRequest "https://hoogle.haskell.org"
+  HoogleUrl url <- State.gets sHoogle
+  req <- Http.parseRequest url
     <&> Http.setQueryString
       [ ("mode", Just "json")
       , ("start", Just "1")
@@ -217,9 +231,9 @@ withFirstSearchResult (name, get) term act = do
       viewSearchResults res
       throwError $ "No " <> name <> " results found for '" <> term <> "'"
 
-hooglePackageUrl :: String -> PackageUrl
-hooglePackageUrl pname =
-  PackageUrl $ "https://hackage.haskell.org/package/" ++ pname
+hooglePackageUrl :: HackageUrl -> String -> PackageUrl
+hooglePackageUrl (HackageUrl hackage) pname =
+  PackageUrl $ hackage ++ "/package/" ++ pname
 
 toGroups :: [Hoogle.Item] -> [TargetGroup]
 toGroups
@@ -533,7 +547,8 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
   -- :pinterface <TERM>
   -- :pdocumentation <TERM>
   ViewPackage view (Search term) -> do
-    let url = hooglePackageUrl term
+    hackage <- State.gets sHackage
+    let url = hooglePackageUrl hackage term
     html <- fetchHTML url
     let package = parsePackageDocs url html
     State.modify' $ \s -> s{ sContext = ContextPackage package }

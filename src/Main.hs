@@ -10,6 +10,8 @@ import Docs.CLI.Evaluate
   , Cmd(..)
   , Selection(..)
   , runCLI
+  , defaultHackageUrl
+  , defaultHoogleUrl
   )
 
 import Control.Concurrent.Async (withAsync)
@@ -91,6 +93,8 @@ main = void $ do
         , sManager = manager
         , sCache = cache
         , sNoColours = not isTTY
+        , sHoogle = defaultHoogleUrl
+        , sHackage = defaultHackageUrl
         }
   withAsync (Cache.enforce policy) $ \_ ->
     runCLI state $
@@ -110,6 +114,8 @@ main' = void $ do
         , sManager = manager
         , sCache = cache
         , sNoColours = False
+        , sHoogle = defaultHoogleUrl
+        , sHackage = defaultHackageUrl
         }
   runCLI state $ do
     evaluateCmd (ViewDeclaration  $ Search "completeWord +haskeline")
