@@ -43,5 +43,4 @@ Argument documentation being rendered in single lines
   31 withInterrupt :: (MonadIO m, MonadMask m) => InputT m a -> InputT m a 
   32 data Interrupt 
   33 handleInterrupt :: MonadMask m => m a -> m a -> m a 
-  34 module System.Console.Haskeline.Completion
 
