@@ -231,8 +231,8 @@ withFirstSearchResult (name, get) term act = do
       viewSearchResults res
       throwError $ "No " <> name <> " results found for '" <> term <> "'"
 
-hooglePackageUrl :: HackageUrl -> String -> PackageUrl
-hooglePackageUrl (HackageUrl hackage) pname =
+packageUrl :: HackageUrl -> String -> PackageUrl
+packageUrl (HackageUrl hackage) pname =
   PackageUrl $ hackage ++ "/package/" ++ pname
 
 toGroups :: [Hoogle.Item] -> [TargetGroup]
@@ -548,7 +548,7 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
   -- :pdocumentation <TERM>
   ViewPackage view (Search term) -> do
     hackage <- State.gets sHackage
-    let url = hooglePackageUrl hackage term
+    let url = packageUrl hackage term
     html <- fetchHTML url
     let package = parsePackageDocs url html
     State.modify' $ \s -> s{ sContext = ContextPackage package }
@@ -671,7 +671,7 @@ withPackage url act = do
 
 withPackageForModule :: Module -> (Package -> M a) -> M a
 withPackageForModule mod act = do
-  let url = packageUrl $ mUrl mod
+  let url = toPackageUrl $ mUrl mod
   html <- fetchHTML url
   let package = parsePackageDocs url html
   State.modify' $ \s -> s{ sContext = ContextPackage package }
@@ -1013,8 +1013,8 @@ sourceLink (DeclUrl murl anchor) = do
 declUrl :: Declaration -> DeclUrl
 declUrl Declaration{..} =  DeclUrl dModuleUrl dAnchor
 
-packageUrl :: ModuleUrl -> PackageUrl
-packageUrl (ModuleUrl url) = PackageUrl $ fst $ breakOn "docs" url
+toPackageUrl :: ModuleUrl -> PackageUrl
+toPackageUrl (ModuleUrl url) = PackageUrl $ fst $ breakOn "docs" url
 
 packageModuleUrl :: PackageUrl -> String -> ModuleUrl
 packageModuleUrl (PackageUrl purl) moduleName =
