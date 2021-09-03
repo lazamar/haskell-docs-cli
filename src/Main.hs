@@ -14,6 +14,7 @@ import Docs.CLI.Evaluate
   , runCLI
   , defaultHackageUrl
   , defaultHoogleUrl
+  , moreInfoText
   )
 
 import Control.Concurrent.Async (withAsync)
@@ -65,12 +66,15 @@ cachePolicy unlimitedCache (AppData root) = do
 cliOptions :: O.ParserInfo Options
 cliOptions = O.info (O.helper <*> parser) $ mconcat
   [ O.fullDesc
-  , O.header "haskell-docs-cli"
-  , O.progDescDoc $ Just $ OP.vcat
-    [ ""
-    , "Search Hoogle and view Hackage documentation from the command line."
-    , "Search modules, packages, types and functions by name or by approximate type signature."
+  , O.headerDoc $ Just $ OP.vcat
+    [ "haskell-docs-cli"
+    , ""
+    , OP.indent 2 $ OP.vcat
+      [ "Search Hoogle and view Hackage documentation from the command line."
+      , "Search modules, packages, types and functions by name or by approximate type signature."
+      ]
     ]
+  , O.footerDoc $ Just $ moreInfoText <> OP.linebreak
   ]
   where
     parser = do

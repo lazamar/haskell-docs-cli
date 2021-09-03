@@ -14,6 +14,7 @@ module Docs.CLI.Evaluate
   , runCLI
   , defaultHoogleUrl
   , defaultHackageUrl
+  , moreInfoText
   ) where
 
 import Prelude hiding (mod)
@@ -574,16 +575,21 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
       ContextModule m    -> withPackageForModule m (viewPackage view)
       ContextPackage p   -> viewPackage view p
 
+moreInfoText :: P.Doc
+moreInfoText =
+  "More info at <https://github.com/lazamar/haskell-docs-cli>"
+
 helpText :: P.Doc
-helpText = P.vcat
+helpText = P.vcat $ concatMap addLine
   [ hcommands
-  , ""
   , hselectors
-  , ""
   , hexamples
-  , ""
+  , moreInfoText
   ]
   where
+    addLine :: P.Doc -> [P.Doc]
+    addLine line = [line, ""]
+
     showItems :: [(String, P.Doc)] -> P.Doc
     showItems items =
       let maxNameWidth = maximum $ map (length . fst) items in
