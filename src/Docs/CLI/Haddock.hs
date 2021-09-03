@@ -158,11 +158,11 @@ parseDeclaration moduleUrl (Html el) = do
   (argsDocs, content) <- return
     $ first listToMaybe
     $ partition (is argumentsDocsClass . class_) elements
-  let
-      anchor = case listToMaybe $ anchors sigHead of
-        Nothing -> error "declaration with no anchor in signature"
-        Just a  -> a
 
+  -- we ignore declarations without anchors
+  anchor <- listToMaybe (anchors sigHead)
+
+  let
       args = case argsDocs of
         Just ds -> findDeep children (is "src" . class_) ds
         Nothing -> []
