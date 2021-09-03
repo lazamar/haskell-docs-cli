@@ -32,10 +32,12 @@ import System.IO (hIsTerminalDevice, stdout)
 
 import Data.Cache as Cache
 
+data CacheOption = Unlimited | Off
+
 data Options = Options
   { optQuery :: String
   , optAppDataDir :: Maybe FilePath
-  , optUnlimitedCache :: Bool
+  , optCache :: Maybe CacheOption
   , optHoogle :: Maybe HoogleUrl
   , optHackage :: Maybe HackageUrl
   }
@@ -53,15 +55,18 @@ mkAppDataDir mpath = do
   createDirectoryIfMissing True dir
   return $ AppData dir
 
-cachePolicy :: Bool -> AppData -> IO Cache.EvictionPolicy
-cachePolicy unlimitedCache (AppData root) = do
-  let dir = root </> "cache"
-  createDirectoryIfMissing True dir
-  let mb = 1024 * 1024
-      (bytes, age) = if unlimitedCache
-        then (Cache.NoMaxBytes         , Cache.NoMaxAge)
-        else (Cache.MaxBytes $ 100 * mb, Cache.MaxAgeDays 20)
-  return $ Cache.Evict bytes age (Store dir)
+cachePolicy :: Maybe CacheOption -> AppData -> IO Cache.EvictionPolicy
+cachePolicy mCacheOpt (AppData root) =
+  case mCacheOpt of
+    Just Off -> return Cache.NoStorage
+    Just Unlimited -> eviction Cache.NoMaxBytes Cache.NoMaxAge
+    Nothing -> eviction (Cache.MaxBytes $ 100 * mb) (Cache.MaxAgeDays 20)
+  where
+    mb = 1024 * 1024
+    eviction bytes age = do
+      let dir = root </> "cache"
+      createDirectoryIfMissing True dir
+      return $ Cache.Evict bytes age (Store dir)
 
 cliOptions :: O.ParserInfo Options
 cliOptions = O.info (O.helper <*> parser) $ mconcat
@@ -81,28 +86,39 @@ cliOptions = O.info (O.helper <*> parser) $ mconcat
       optQuery <- fmap unwords . many $ O.strArgument $ O.metavar "CMD"
       optAppDataDir <- optional $ O.strOption $ mconcat
         [ O.long "data-dir"
+        , O.metavar "PATH"
         , O.help "Specify the directory for application data such as requests cache to be stored."
         ]
-      optUnlimitedCache <- O.flag False True $ mconcat
-        [ O.long "unlimited-cache"
-        , O.help "Disable cache eviction"
+      optCache <- optional $ O.option readCache $ mconcat
+        [ O.long "cache"
+        , O.metavar "unlimited|off"
+        , O.help "Set a custom cache eviction policy"
         ]
       optHoogle <- optional $ fmap HoogleUrl $ O.strOption $ mconcat
         [ O.long "hoogle"
+        , O.metavar "URL"
         , O.help "Address of Hoogle instance to be used"
         ]
       optHackage <- optional $ fmap HackageUrl $ O.strOption $ mconcat
         [ O.long "hackage"
+        , O.metavar "URL"
         , O.help "Address of Hackage instance to be used"
         ]
       pure $ Options {..}
+      where
+        readCache  = O.maybeReader $ \str ->
+          case str of
+            "unlimited" -> Just Unlimited
+            "off" -> Just Off
+            _ -> Nothing
+
 
 main :: IO ()
 main = void $ do
   Options{..} <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
   appData <- mkAppDataDir optAppDataDir
-  policy <- cachePolicy optUnlimitedCache appData
+  policy <- cachePolicy optCache appData
   cache <- Cache.create policy
   isTTY <- hIsTerminalDevice stdout
   let state = ShellState
@@ -124,7 +140,7 @@ main' = void $ do
   Options{} <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
   appData <- mkAppDataDir Nothing
-  policy <- cachePolicy False appData
+  policy <- cachePolicy Nothing appData
   cache <- Cache.create policy
   let state = ShellState
         { sContext = ContextEmpty

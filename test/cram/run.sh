@@ -8,7 +8,7 @@
 cd $TESTDIR/../..
 $(stack path --dist-dir)/build/hdc/hdc \
   --data-dir $TESTDIR/cram-data \
-  --unlimited-cache \
+  --cache unlimited\
   $@
 
 
