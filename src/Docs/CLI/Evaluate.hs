@@ -618,8 +618,12 @@ helpText = P.vcat $ concatMap addLine
           , (":package containers", "View package documentation for the 'containers' package")
           , (":module Data.List", "View module documentation for the 'Data.List' module")
           , (":src insertWith", "View the source for the first Hoogle result for 'insertWith'")
-          , (":package 2", "View package documentation for the item with index 2 in the current context")
-          , (":module /tak", "View module documentation for the first item with prefix 'tak' in the current context")
+          , (":package 2"
+            , "View package documentation for the item with index 2 in the" P.</> "current context"
+            )
+          , (":module /tak"
+            , "View module documentation for the first item with prefix" P.</> "'tak' in the current context"
+            )
           ]
       ]
 targetGroupDocumentation :: TargetGroup -> M ()
