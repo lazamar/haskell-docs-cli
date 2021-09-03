@@ -18,7 +18,7 @@ module Docs.CLI.Evaluate
 
 import Prelude hiding (mod)
 import Control.Applicative ((<|>))
-import Control.Exception (finally, throwIO)
+import Control.Exception (finally, throwIO, try)
 import Control.Monad (unless, void)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Except (ExceptT(..), MonadError, catchError, runExceptT, throwError)
@@ -1044,13 +1044,15 @@ fetchHTML x = do
   src <- fetch req
   return (parseHtmlDocument src)
 
+-- | Fetch and cache request's content
 fetch :: Http.Request -> M LB.ByteString
 fetch req = do
   cache <- State.gets sCache
   cached cache (show req) $ do
-      liftIO $ putStrLn $ "fetching: " <> (uriToString id (Http.getUri req) "")
+      liftIO $ putStrLn $ "fetching: " <> uriToString id (Http.getUri req) ""
       manager <- State.gets sManager
-      res <- liftIO $ Http.httpLbs req manager
+      eitherRes <- liftIO $ try $ Http.httpLbs req manager
+      res <- either (throwError . prettyHttpError) return eitherRes
       let status = Http.responseStatus res
       unless (Http.statusIsSuccessful status) $
         throwError
@@ -1058,3 +1060,35 @@ fetch req = do
           <> Text.unpack (Text.decodeUtf8 $ Http.statusMessage status)
       return $ Http.responseBody res
 
+  where
+    prettyHttpError :: Http.HttpException -> String
+    prettyHttpError httpErr = "*** HTTP Error: " <> case httpErr of
+      Http.InvalidUrlException _ msg ->
+         "invalid URL: " <> msg
+      Http.HttpExceptionRequest _ err -> case err of
+        Http.StatusCodeException res _ ->
+          "invalid response status: " <> show (Http.responseStatus res)
+        Http.TooManyRedirects _ -> "too many redirects"
+        Http.OverlongHeaders -> "overlong headers"
+        Http.ResponseTimeout -> "response timeout"
+        Http.ConnectionTimeout -> "connection timeout"
+        Http.ConnectionFailure _ ->
+          "connection failure. Check your internet connection"
+        Http.InvalidStatusLine _ -> "invalid status line"
+        Http.InvalidHeader _ -> "invalid header"
+        Http.InvalidRequestHeader _ -> "invalid request header"
+        Http.InternalException e -> "internal exception: " <> show e
+        Http.ProxyConnectException _ _ status ->
+          "unable to connect to proxy: " <> show status
+        Http.NoResponseDataReceived -> "no response data received"
+        Http.TlsNotSupported -> "tls not supported"
+        Http.WrongRequestBodyStreamSize _ _ -> "wrong request stream size"
+        Http.ResponseBodyTooShort _ _ -> "reponse body too short"
+        Http.InvalidChunkHeaders -> "invalid chunk headers"
+        Http.IncompleteHeaders -> "incomplete headers"
+        Http.InvalidDestinationHost _ -> "invalid destination host"
+        Http.HttpZlibException e -> "zlib exception: " <> show e
+        Http.InvalidProxyEnvironmentVariable var val ->
+          "invalid proxy environment var: " <> show var <> ": " <> show val
+        Http.ConnectionClosed -> "connection closed"
+        Http.InvalidProxySettings _ -> "invalid proxy settings"
