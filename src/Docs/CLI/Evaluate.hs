@@ -36,7 +36,7 @@ import Data.List hiding (groupBy)
 import Data.List.Extra (breakOn)
 import Data.Char (isSpace)
 import System.Environment (getEnv, lookupEnv)
-import System.IO (hPutStrLn, hClose, stdout, Handle)
+import System.IO (hPutStrLn, hClose, hFlush, stdout, Handle)
 import System.IO.Temp (withSystemTempFile)
 import System.Exit (exitSuccess)
 import qualified Hoogle as H
@@ -909,6 +909,7 @@ viewSource durl = do
         editor <- getEditor
         withSystemTempFile filename $ \fullpath handle -> do
           Text.hPutStr handle content
+          hFlush handle
           Process.callCommand $ unwords [editor, fullpath, line]
 
 getEditor :: IO String
