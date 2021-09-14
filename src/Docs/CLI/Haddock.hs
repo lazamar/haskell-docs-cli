@@ -433,7 +433,7 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
                               $ mapMaybe (unXMLElement stack) (children e)
       -- style
       "caption"           | underClass "subs fields" -> hide
-                          | otherwise ->  Just . P.bold
+                          | otherwise ->  Just
       "name"              -> Just . P.dullgreen
       "def"               -> Just . P.dullgreen
       "fixity"            -> Just . P.black
@@ -456,14 +456,16 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
        "h6"      -> Just . linebreak . mappend (P.text "###### ")
        "tt"      -> Just . P.green
        "pre"     -> const
-                      $ Just . P.nest 2 . P.black . linebreak . P.string . Text.unpack
+                      $ Just . P.nest 2 . linebreak . P.vsep
+                      $ map (P.black . P.text . Text.unpack)
+                      $ Text.lines
                       $ innerText e
        "code"    -> Just . P.black
        "a"       -> Just . link
-       "b"       -> Just . P.bold
+       "b"       -> Just
        "p"       -> Just . linebreak
        "br"      -> const $ Just P.hardline
-       "dt"      -> Just . P.bold . linebreak
+       "dt"      -> Just . linebreak
        "dd"      -> Just . linebreak
        "summary" -> Just . linebreak
        "ol"      -> const
