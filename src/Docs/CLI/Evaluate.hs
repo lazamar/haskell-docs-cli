@@ -1005,7 +1005,7 @@ viewTargetGroup tgroup = viewInTerminalPaged $ P.vsep
       [ viewDescription representative
       , viewPackageInfoList tgroup
       , prettyHtml $ Hoogle.docs representative
-      ] ++ reverse (P.cyan . P.text . toUrl <$> toList tgroup)
+      ] ++ reverse (Haddock.link . P.text . toUrl <$> toList tgroup)
 
 -- ================================
 -- Hoogle handling

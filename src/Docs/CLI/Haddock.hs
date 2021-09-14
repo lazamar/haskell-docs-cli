@@ -50,7 +50,6 @@ import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import qualified Text.PrettyPrint.ANSI.Leijen as P
-import qualified Text.PrettyPrint.ANSI.Leijen.Internal as P
 
 -- | An html element
 newtype Html = Html Xml.Element
@@ -199,7 +198,7 @@ parseDeclaration moduleUrl (Html el) = do
     removeInvisible =
       filterDeep $ \node -> case node of
         Xml.NodeElement e
-          | class_ e `elem` ["fixity", "selflink"] -> Nothing
+          | class_ e == "selflink" -> Nothing
         _ -> Just node
 
     asTag t e = e
@@ -436,8 +435,8 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
       "caption"           | underClass "subs fields" -> hide
                           | otherwise ->  Just . P.bold
       "name"              -> Just . P.dullgreen
-      "def"               -> Just . P.bold
-      "fixity"            -> Just . italics . P.black
+      "def"               -> Just . P.dullgreen
+      "fixity"            -> Just . P.black
       -- invisible
       "link"              -> hide
       "selflink"          -> hide
@@ -499,7 +498,6 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
 
     isInstanceDetails e = isSubsection e && isJust (findM (is "details" . tag) (children e))
     linebreak doc = P.hardline <> doc <> P.hardline
-    italics = P.Italicize True
     hide = const Nothing
     isSubsection e = tag e == "td" && attr "colspan" e == "2"
 
@@ -611,5 +609,5 @@ bullet :: P.Doc -> P.Doc
 bullet doc = P.fill 2 (P.char '-') <> P.align doc
 
 link :: P.Doc -> P.Doc
-link = P.cyan
+link = P.dullcyan
 
