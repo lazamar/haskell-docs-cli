@@ -26,7 +26,6 @@ A full package documentation
      
       autoreconf -fi
       cabal install
-      
        
     There is no need to run the configure script manually however, as cabal 
     configure does that automatically.

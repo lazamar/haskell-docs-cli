@@ -25,7 +25,6 @@ A class with code examples, different methods, and different headings
       first id \xe2\x89\xa1 id (esc)
       second id \xe2\x89\xa1 id (esc)
       
-      
     If you supply both, you should also ensure:
     
       bimap f g \xe2\x89\xa1 first f . second g (esc)
@@ -35,7 +34,6 @@ A class with code examples, different methods, and different headings
       bimap  (f . g) (h . i) \xe2\x89\xa1 bimap f h . bimap g i (esc)
       first  (f . g) \xe2\x89\xa1 first  f . first  g (esc)
       second (f . g) \xe2\x89\xa1 second f . second g (esc)
-      
       
     Since: base-4.8.0.0
     
@@ -60,14 +58,11 @@ A class with code examples, different methods, and different headings
         >>> bimap toUpper (+1) ('j', 3)
         ('J',4)
         
-        
         >>> bimap toUpper (+1) (Left 'j')
         Left 'J'
         
-        
         >>> bimap toUpper (+1) (Right 3)
         Right 4
-        
         
     first :: (a -> b) -> p a c -> p b c  
     
@@ -82,10 +77,8 @@ A class with code examples, different methods, and different headings
         >>> first toUpper ('j', 3)
         ('J',3)
         
-        
         >>> first toUpper (Left 'j')
         Left 'J'
-        
         
     second :: (b -> c) -> p a b -> p a c  
     
@@ -100,10 +93,8 @@ A class with code examples, different methods, and different headings
         >>> second (+1) ('j', 3)
         ('j',4)
         
-        
         >>> second (+1) (Right 3)
         Right 4
-        
         
   
     #### Instances
