@@ -161,7 +161,6 @@ Example of results with grouping.Modules and types in results
 
 Package results
   $ $TESTDIR/run.sh pretty
-  fetching: https://hoogle.haskell.org/?mode=json&start=1&hoogle=pretty
   69 module Language.C.Pretty
      language-c-quote
   68 class Pretty a
