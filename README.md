@@ -22,6 +22,10 @@ stack install
 
 ## Functionalities
 
+Demo of all commands
+
+[![asciicast](https://asciinema.org/a/436972.svg)](https://asciinema.org/a/436972)
+
 ### Search using Hoogle
 
 Just like in Hoogle, just type a function name or
