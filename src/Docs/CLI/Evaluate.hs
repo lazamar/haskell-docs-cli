@@ -36,7 +36,7 @@ import Data.List hiding (groupBy)
 import Data.List.Extra (breakOn)
 import Data.Char (isSpace)
 import System.Environment (getEnv, lookupEnv)
-import System.IO (hPutStrLn, hClose, hFlush, stdout, Handle)
+import System.IO (hPutStrLn, hClose, hFlush, stdout, Handle, stderr)
 import System.IO.Temp (withSystemTempFile)
 import System.Exit (exitSuccess)
 import qualified Hoogle as H
@@ -384,7 +384,7 @@ evaluate input =
     Left err   -> liftIO (putStrLn err)
     Right cmd  -> evaluateCmd cmd `catchError` showFailure
   where
-    showFailure e = liftIO $ putStrLn $ "Failed: "<> e
+    showFailure e = liftIO $ hPutStrLn stderr $ "Failed: "<> e
 
 evaluateCmd :: Cmd -> M ()
 evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
@@ -752,10 +752,10 @@ promptSelectOne = \case
       Just n -> case listToMaybe $ drop (n - 1) xs of
         Just (x, _) -> return x
         Nothing -> do
-          liftIO $ putStrLn "Invalid index"
+          liftIO $ hPutStrLn stderr "Invalid index"
           promptSelectOne xs
       Nothing -> do
-        liftIO $ putStrLn "Number not recognised"
+        liftIO $ hPutStrLn stderr "Number not recognised"
         promptSelectOne xs
 
 withModuleFromPackage :: String -> Package -> (Module -> M a) -> M a
@@ -1060,7 +1060,7 @@ fetch :: Http.Request -> M LB.ByteString
 fetch req = do
   cache <- State.gets sCache
   cached cache (show req) $ do
-      liftIO $ putStrLn $ "fetching: " <> uriToString id (Http.getUri req) ""
+      liftIO $ hPutStrLn stderr $ "fetching: " <> uriToString id (Http.getUri req) ""
       manager <- State.gets sManager
       eitherRes <- liftIO $ try $ Http.httpLbs req manager
       res <- either (throwError . prettyHttpError) return eitherRes
