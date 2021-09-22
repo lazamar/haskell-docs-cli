@@ -351,7 +351,7 @@ interactive = do
   viewInTerminal greeting
   loop $ do
     printContext
-    input <- fromMaybe "" <$> getInputLine "> "
+    input <- fromMaybe ":quit" <$> getInputLine "> "
     evaluate input
   where
     onError = return $ Right ()
