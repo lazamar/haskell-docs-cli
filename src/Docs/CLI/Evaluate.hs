@@ -186,7 +186,7 @@ complete (left', _) = do
           (l, map (asCompletion xs) cs)
         | Just option <- find (xs `isInfixOf`) options =
           let newPrefix = dropEnd (length $ dropInfix xs option) option
-              newLeft = reverse newPrefix
+              newLeft = reverse newPrefix <> dropWhile (/= '/') l
           in completionsFor newLeft newPrefix
         | otherwise = (l, [])
 
