@@ -8,6 +8,8 @@ Staying in the command line avoids switching to and from the browser, makes it
 easier to seach a documentation page, jumping through its content, and to view
 the source code of libraries.
 
+Read more about the rationale [here](https://lazamar.github.io/haskell-documentation-in-the-command-line/).
+
 ## Installation
 
 Download the project and run `stack install`.
