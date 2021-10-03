@@ -1052,9 +1052,7 @@ packageModuleUrl (PackageUrl purl) moduleName =
 -- | Fetch and cache request's content
 fetchHTML :: HasUrl a => a -> M HtmlPage
 fetchHTML x = do
-  cache <- State.gets sCache
-  let uri = getUrl x
-  src <- cached cache uri $ fetch uri
+  src <- fetch (getUrl x)
   return (parseHtmlDocument src)
 
 -- | Decide how to fetch depending on the URI
@@ -1073,6 +1071,8 @@ fetchFile filePath = do
 
 fetchHttp :: Http.Request -> M LB.ByteString
 fetchHttp req = do
+  cache <- State.gets sCache
+  cached cache (show req) $ do
       liftIO $ hPutStrLn stderr $ "fetching: " <> uriToString id (Http.getUri req) ""
       manager <- State.gets sManager
       eitherRes <- liftIO $ try $ Http.httpLbs req manager
