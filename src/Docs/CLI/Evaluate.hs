@@ -215,7 +215,7 @@ runSearch term = do
       , ("start", Just "1")
       , ("hoogle", Just $ Text.encodeUtf8 $ Text.pack term)
       ]
-  res <- fetchHttp req
+  res <- fetch req
   either error return $ Aeson.eitherDecode res
 
 withFirstSearchResult
@@ -1046,33 +1046,34 @@ packageModuleUrl (PackageUrl purl) moduleName =
     stripSuffix x s = maybe s reverse $ stripPrefix x $ reverse s
 
 -- =============================
---  Fetch HTML
+--  HTTP requests
 -- =============================
 
 -- | Fetch and cache request's content
 fetchHTML :: HasUrl a => a -> M HtmlPage
 fetchHTML x = do
-  src <- fetch (getUrl x)
+  src <- case location (getUrl x) of
+    Local path -> liftIO $ LB.readFile path
+    Remote url -> do
+      req <- Http.parseRequest url
+      fetch req
   return (parseHtmlDocument src)
 
--- | Decide how to fetch depending on the URI
-fetch :: Url -> M LB.ByteString
-fetch uri | "https://" `isPrefixOf` uri 
-          || "http://" `isPrefixOf` uri = do 
-      req <- Http.parseRequest uri
-      fetchHttp req
-fetch uri | Just filePath <- stripPrefix "file://" uri = fetchFile filePath
-fetch uri = throwError $ "unable to parse URI pattern: " <> uri
+data Location
+  = Remote Url
+  | Local FilePath
 
-fetchFile :: FilePath -> M LB.ByteString
-fetchFile filePath = do
-      liftIO $ hPutStrLn stderr $ "reading file: " <> filePath
-      liftIO $ LB.readFile filePath
+location :: Url -> Location
+location url
+  | any (`isPrefixOf` url) ["https://", "http://"] = Remote url
+  | Just path <- stripPrefix "file://" url = Local path
+  | otherwise = error $ "unable to parse URL protocol for: " <> url
 
-fetchHttp :: Http.Request -> M LB.ByteString
-fetchHttp req = do
+fetch :: Http.Request -> M LB.ByteString
+fetch req = do
   cache <- State.gets sCache
   cached cache (show req) $ do
+      -- as http requests may take a while, tell the user what is happening.
       liftIO $ hPutStrLn stderr $ "fetching: " <> uriToString id (Http.getUri req) ""
       manager <- State.gets sManager
       eitherRes <- liftIO $ try $ Http.httpLbs req manager
