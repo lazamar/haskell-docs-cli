@@ -27,7 +27,7 @@ import qualified Options.Applicative as O
 import qualified Options.Applicative.Help.Pretty as OP
 import System.Environment (getEnv)
 import System.FilePath.Posix ((</>))
-import System.Directory (createDirectoryIfMissing)
+import System.Directory (createDirectoryIfMissing, getHomeDirectory)
 import System.IO (hIsTerminalDevice, stdout)
 
 import Data.Cache as Cache
@@ -50,7 +50,7 @@ mkAppDataDir mpath = do
   dir <- case mpath of
     Just path -> return path
     Nothing -> do
-      home <- getEnv "HOME" <|> error "HOME environment variable not set"
+      home <- getHomeDirectory
       return $ home </> ".haskell-docs-cli"
   createDirectoryIfMissing True dir
   return $ AppData dir

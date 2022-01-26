@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TypeApplications #-}
 {-# OPTIONS_GHC -Wwarn #-}
 module Docs.CLI.Evaluate
   ( interactive
@@ -19,7 +20,7 @@ module Docs.CLI.Evaluate
 
 import Prelude hiding (mod)
 import Control.Applicative ((<|>))
-import Control.Exception (finally, throwIO, try)
+import Control.Exception (finally, throwIO, try, handle, SomeException)
 import Control.Monad (unless, void)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Except (ExceptT(..), MonadError, catchError, runExceptT, throwError)
@@ -35,6 +36,7 @@ import Data.Maybe (fromMaybe, mapMaybe, listToMaybe)
 import Data.List hiding (groupBy)
 import Data.List.Extra (breakOn)
 import Data.Char (isSpace)
+import System.Directory (getHomeDirectory)
 import System.Environment (getEnv, lookupEnv)
 import System.IO (hPutStrLn, hClose, hFlush, stdout, Handle)
 import System.IO.Temp (withSystemTempFile)
@@ -143,7 +145,7 @@ runCLI state program = do
 
 cliSettings :: IO (CLI.Settings (StateT ShellState IO))
 cliSettings = do
-  mhome <- lookupEnv "HOME"
+  mhome <- either (const Nothing) Just <$> try @SomeException getHomeDirectory
   return $ def
     { CLI.complete = complete
     , CLI.historyFile = mhome <&> (</> ".hasekell-docs-cli.history")
