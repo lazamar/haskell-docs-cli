@@ -45,6 +45,7 @@ import qualified Hoogle as H
 import System.FilePath ((</>))
 import Network.URI (uriToString)
 
+import Docs.CLI.Directory
 import Docs.CLI.Types
 import Docs.CLI.Haddock as Haddock
 import qualified Docs.CLI.Hoogle as Hoogle
@@ -145,10 +146,10 @@ runCLI state program = do
 
 cliSettings :: IO (CLI.Settings (StateT ShellState IO))
 cliSettings = do
-  mhome <- either (const Nothing) Just <$> try @SomeException getHomeDirectory
+  mHistFile <- either (const Nothing) Just <$> try @SomeException getAppHistoryFile
   return $ def
     { CLI.complete = complete
-    , CLI.historyFile = mhome <&> (</> ".haskell-docs-cli.history")
+    , CLI.historyFile = mHistFile
     }
   where
     def :: CLI.Settings (StateT ShellState IO)
