@@ -30,6 +30,7 @@ source-repository head
 library
   exposed-modules:
       Data.Cache
+      Docs.CLI.Directory
       Docs.CLI.Evaluate
       Docs.CLI.Haddock
       Docs.CLI.Hoogle

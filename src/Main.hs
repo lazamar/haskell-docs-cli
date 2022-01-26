@@ -1,6 +1,10 @@
 {-# LANGUAGE ApplicativeDo #-}
 module Main where
 
+import Docs.CLI.Directory
+  ( AppCache(..)
+  , mkAppCacheDir
+  )
 import Docs.CLI.Evaluate
   ( interactive
   , evaluate
@@ -42,16 +46,6 @@ data Options = Options
   , optHackage :: Maybe HackageUrl
   }
 
-newtype AppCache = AppCache FilePath
-
--- | Create direcotry of app cache if it doesn't exist
-mkAppCacheDir :: Maybe FilePath -> IO AppCache
-mkAppCacheDir mpath = do
-  dir <- case mpath of
-    Just path -> return path
-    Nothing -> (</> "html_cache") <$> getXdgDirectory XdgCache "haskell-docs-cli"
-  createDirectoryIfMissing True dir
-  return $ AppCache dir
 
 cachePolicy :: Maybe CacheOption -> AppCache -> IO Cache.EvictionPolicy
 cachePolicy mCacheOpt (AppCache dir) =
