@@ -27,7 +27,7 @@ import qualified Options.Applicative as O
 import qualified Options.Applicative.Help.Pretty as OP
 import System.Environment (getEnv)
 import System.FilePath.Posix ((</>))
-import System.Directory (createDirectoryIfMissing, getHomeDirectory)
+import System.Directory (createDirectoryIfMissing, getHomeDirectory, getXdgDirectory, XdgDirectory(..))
 import System.IO (hIsTerminalDevice, stdout)
 
 import Data.Cache as Cache
@@ -36,27 +36,25 @@ data CacheOption = Unlimited | Off
 
 data Options = Options
   { optQuery :: String
-  , optAppDataDir :: Maybe FilePath
+  , optAppCacheDir :: Maybe FilePath
   , optCache :: Maybe CacheOption
   , optHoogle :: Maybe HoogleUrl
   , optHackage :: Maybe HackageUrl
   }
 
-newtype AppData = AppData FilePath
+newtype AppCache = AppCache FilePath
 
--- | Create direcotry of app data if it doesn't exist
-mkAppDataDir :: Maybe FilePath -> IO AppData
-mkAppDataDir mpath = do
+-- | Create direcotry of app cache if it doesn't exist
+mkAppCacheDir :: Maybe FilePath -> IO AppCache
+mkAppCacheDir mpath = do
   dir <- case mpath of
     Just path -> return path
-    Nothing -> do
-      home <- getHomeDirectory
-      return $ home </> ".haskell-docs-cli"
+    Nothing -> (</> "html_cache") <$> getXdgDirectory XdgCache "haskell-docs-cli"
   createDirectoryIfMissing True dir
-  return $ AppData dir
+  return $ AppCache dir
 
-cachePolicy :: Maybe CacheOption -> AppData -> IO Cache.EvictionPolicy
-cachePolicy mCacheOpt (AppData root) =
+cachePolicy :: Maybe CacheOption -> AppCache -> IO Cache.EvictionPolicy
+cachePolicy mCacheOpt (AppCache dir) =
   case mCacheOpt of
     Just Off -> return Cache.NoStorage
     Just Unlimited -> eviction Cache.NoMaxBytes Cache.NoMaxAge
@@ -64,7 +62,6 @@ cachePolicy mCacheOpt (AppData root) =
   where
     mb = 1024 * 1024
     eviction bytes age = do
-      let dir = root </> "cache"
       createDirectoryIfMissing True dir
       return $ Cache.Evict bytes age (Store dir)
 
@@ -84,10 +81,10 @@ cliOptions = O.info (O.helper <*> parser) $ mconcat
   where
     parser = do
       optQuery <- fmap unwords . many $ O.strArgument $ O.metavar "CMD"
-      optAppDataDir <- optional $ O.strOption $ mconcat
-        [ O.long "data-dir"
+      optAppCacheDir <- optional $ O.strOption $ mconcat
+        [ O.long "cache-dir"
         , O.metavar "PATH"
-        , O.help "Specify the directory for application data such as requests cache to be stored."
+        , O.help "Specify the directory for application cache (default: XDG_CACHE_HOME/haskell-docs-cli)."
         ]
       optCache <- optional $ O.option readCache $ mconcat
         [ O.long "cache"
@@ -117,8 +114,8 @@ main :: IO ()
 main = void $ do
   Options{..} <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
-  appData <- mkAppDataDir optAppDataDir
-  policy <- cachePolicy optCache appData
+  appCache <- mkAppCacheDir optAppCacheDir
+  policy <- cachePolicy optCache appCache
   cache <- Cache.create policy
   isTTY <- hIsTerminalDevice stdout
   let state = ShellState
@@ -139,8 +136,8 @@ main' :: IO ()
 main' = void $ do
   Options{} <- O.execParser cliOptions
   manager <- Http.newManager Http.tlsManagerSettings
-  appData <- mkAppDataDir Nothing
-  policy <- cachePolicy Nothing appData
+  appCache <- mkAppCacheDir Nothing
+  policy <- cachePolicy Nothing appCache
   cache <- Cache.create policy
   let state = ShellState
         { sContext = ContextEmpty
