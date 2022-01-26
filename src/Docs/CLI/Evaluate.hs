@@ -148,7 +148,7 @@ cliSettings = do
   mhome <- either (const Nothing) Just <$> try @SomeException getHomeDirectory
   return $ def
     { CLI.complete = complete
-    , CLI.historyFile = mhome <&> (</> ".hasekell-docs-cli.history")
+    , CLI.historyFile = mhome <&> (</> ".haskell-docs-cli.history")
     }
   where
     def :: CLI.Settings (StateT ShellState IO)
