@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a65307ff0a2e50382062b1eec939d95c940f92b18f669623c0ccafc0b6ae3bc8
+-- hash: d10e7b623345ef0211dcb80f851e3e9557bc05a35b39029a74810d9782249370
 
 name:           haskell-docs-cli
 version:        1.0.0.0
@@ -40,7 +40,18 @@ library
       Paths_haskell_docs_cli
   hs-source-dirs:
       src
-  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses ScopedTypeVariables
+  default-extensions:
+      ApplicativeDo
+      OverloadedStrings
+      RecordWildCards
+      TupleSections
+      LambdaCase
+      FlexibleInstances
+      MultiWayIf
+      GeneralisedNewtypeDeriving
+      DerivingStrategies
+      MultiParamTypeClasses
+      ScopedTypeVariables
   build-depends:
       aeson
     , ansi-wl-pprint
@@ -82,7 +93,18 @@ executable hdc
       Paths_haskell_docs_cli
   hs-source-dirs:
       src
-  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses ScopedTypeVariables
+  default-extensions:
+      ApplicativeDo
+      OverloadedStrings
+      RecordWildCards
+      TupleSections
+      LambdaCase
+      FlexibleInstances
+      MultiWayIf
+      GeneralisedNewtypeDeriving
+      DerivingStrategies
+      MultiParamTypeClasses
+      ScopedTypeVariables
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
   build-depends:
       aeson
@@ -122,7 +144,18 @@ test-suite haskell-docs-cli-test
       Paths_haskell_docs_cli
   hs-source-dirs:
       test
-  default-extensions: ApplicativeDo OverloadedStrings RecordWildCards TupleSections LambdaCase FlexibleInstances MultiWayIf GeneralisedNewtypeDeriving DerivingStrategies MultiParamTypeClasses ScopedTypeVariables
+  default-extensions:
+      ApplicativeDo
+      OverloadedStrings
+      RecordWildCards
+      TupleSections
+      LambdaCase
+      FlexibleInstances
+      MultiWayIf
+      GeneralisedNewtypeDeriving
+      DerivingStrategies
+      MultiParamTypeClasses
+      ScopedTypeVariables
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       aeson

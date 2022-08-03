@@ -263,8 +263,8 @@ parsePackageDocs url (HtmlPage root) = pageContent "packageDocs" url $ do
   content     <- findM (is "content" . id_) (children body)
   heading     <- findM (is "h1" . tag) (children content)
   title       <- findM (is "a" . tag) (children heading)
-  description <- findM (is "description" . id_) (children content)
-  moduleList  <- findM (is "modules" . id_) (children content)
+  description <- findRec (is "description" . id_) content
+  moduleList  <- findRec (is "modules" . id_) content
     >>= findM (is "module-list" . id_) . children
   let
     readme = findM (is "readme-container" . id_) (children content)
