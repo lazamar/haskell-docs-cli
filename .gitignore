@@ -1,4 +1,5 @@
 .stack-work/
+dist-newstyle/
 .DS_Store
 tags
 *~
