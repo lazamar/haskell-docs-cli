@@ -918,7 +918,7 @@ viewSource durl = do
 getEditor :: IO String
 getEditor = getEnv "EDITOR" <|> getEnv "VISUAL" <|> defaultEditor
   where
-    defaultEditor = error "no editor selected"
+    defaultEditor = error "no editor selected, make sure you have 'EDITOR' environment variable defined for your shell"
 
 moduleResult :: (String, Hoogle.Item -> Maybe Hoogle.Module)
 moduleResult = ("module", toModule)
