@@ -12,6 +12,20 @@ Read more about the rationale [here](https://lazamar.github.io/haskell-documenta
 
 ## Installation
 
+### Install from Hackage
+
+Installing the `haskell-docs-cli` package makes the `hdc` binary available.
+```
+$ cabal install haskell-docs-cli
+$ hdc
+---- haskell-docs-cli ----------------------------------------------------------
+Say :help for help and :quit to exit
+--------------------------------------------------------------------------------
+>
+```
+
+### Install from source
+
 Download the project and run `stack install`.
 
 It will make the `hdc` executable available in your path.
