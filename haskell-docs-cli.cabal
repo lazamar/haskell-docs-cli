@@ -1,21 +1,19 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.4.
+-- This file has been generated from package.yaml by hpack version 0.34.7.
 --
 -- see: https://github.com/sol/hpack
---
--- hash: d10e7b623345ef0211dcb80f851e3e9557bc05a35b39029a74810d9782249370
 
 name:           haskell-docs-cli
 version:        1.0.0.0
 synopsis:       Search Hoogle and navigate Hackage from the command line.
-description:    Please see the README on GitHub at <https://github.com/githubuser/haskell-docs-cli#readme>
+description:    Please see the README on GitHub at <https://github.com/lazamar/haskell-docs-cli#readme>
 category:       Haskell, Development
-homepage:       https://github.com/githubuser/haskell-docs-cli#readme
-bug-reports:    https://github.com/githubuser/haskell-docs-cli/issues
+homepage:       https://github.com/lazamar/haskell-docs-cli#readme
+bug-reports:    https://github.com/lazamar/haskell-docs-cli/issues
 author:         Marcelo Lazaroni
 maintainer:     Marcelo Lazaroni
-copyright:      2021 Marcelo Lazaroni
+copyright:      2022 Marcelo Lazaroni
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
@@ -25,7 +23,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/haskell-docs-cli
+  location: https://github.com/lazamar/haskell-docs-cli
 
 library
   exposed-modules:
@@ -86,6 +84,7 @@ executable hdc
   main-is: Main.hs
   other-modules:
       Data.Cache
+      Docs.CLI.Directory
       Docs.CLI.Evaluate
       Docs.CLI.Haddock
       Docs.CLI.Hoogle
