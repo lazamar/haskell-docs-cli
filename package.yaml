@@ -17,7 +17,7 @@ category:            Haskell, Development
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on GitHub at <https://github.com/githubuser/haskell-docs-cli#readme>
+description:         Please see the README on GitHub at <https://github.com/lazamar/haskell-docs-cli#readme>
 
 dependencies:
 - base >= 4.7 && < 5
