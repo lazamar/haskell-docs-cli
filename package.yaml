@@ -1,10 +1,10 @@
 name:                haskell-docs-cli
 version:             1.0.0.0
-github:              "githubuser/haskell-docs-cli"
+github:              "lazamar/haskell-docs-cli"
 license:             BSD3
 author:              "Marcelo Lazaroni"
 maintainer:          "Marcelo Lazaroni"
-copyright:           "2021 Marcelo Lazaroni"
+copyright:           "2022 Marcelo Lazaroni"
 
 extra-source-files:
 - README.md
