@@ -5,13 +5,13 @@ Test command line help text
     Search Hoogle and view Hackage documentation from the command line.
     Search modules, packages, types and functions by name or by approximate type signature.
   
-  Usage: hdc [CMD] [--data-dir PATH] [--cache unlimited|off] [--hoogle URL] 
+  Usage: hdc [CMD] [--cache-dir PATH] [--cache unlimited|off] [--hoogle URL] 
              [--hackage URL]
   
   Available options:
     -h,--help                Show this help text
-    --data-dir PATH          Specify the directory for application data such as
-                             requests cache to be stored.
+    --cache-dir PATH         Specify the directory for application cache (default:
+                             XDG_CACHE_HOME/haskell-docs-cli).
     --cache unlimited|off    Set a custom cache eviction policy
     --hoogle URL             Address of Hoogle instance to be used
     --hackage URL            Address of Hackage instance to be used
