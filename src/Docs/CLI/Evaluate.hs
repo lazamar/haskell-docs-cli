@@ -1,6 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeApplications #-}
-{-# OPTIONS_GHC -Wwarn #-}
 module Docs.CLI.Evaluate
   ( interactive
   , evaluate
@@ -20,7 +19,7 @@ module Docs.CLI.Evaluate
 
 import Prelude hiding (mod)
 import Control.Applicative ((<|>))
-import Control.Exception (finally, throwIO, try, handle, SomeException)
+import Control.Exception (finally, throwIO, try, SomeException)
 import Control.Monad (unless, void)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Except (ExceptT(..), MonadError, catchError, runExceptT, throwError)
@@ -36,13 +35,11 @@ import Data.Maybe (fromMaybe, mapMaybe, listToMaybe)
 import Data.List hiding (groupBy)
 import Data.List.Extra (breakOn)
 import Data.Char (isSpace)
-import System.Directory (getHomeDirectory)
-import System.Environment (getEnv, lookupEnv)
+import System.Environment (getEnv)
 import System.IO (hPutStrLn, hClose, hFlush, stdout, Handle, stderr)
 import System.IO.Temp (withSystemTempFile)
 import System.Exit (exitSuccess)
 import qualified Hoogle as H
-import System.FilePath ((</>))
 import Network.URI (uriToString)
 
 import Docs.CLI.Directory
@@ -880,10 +877,12 @@ withPager act = liftIO $
       act handle `finally` hClose handle
 
     runPager mvar =
-      Process.withCreateProcess cmd
-         $ \(Just hin) _ _ p -> do
-           MVar.putMVar mvar hin
-           Process.waitForProcess p
+      Process.withCreateProcess cmd $ \mh _ _ p ->
+        case mh of
+          Just hin -> do
+            MVar.putMVar mvar hin
+            Process.waitForProcess p
+          Nothing -> error "runPager"
 
 -- | Maximum screen width for flowing text.
 -- Fixed-width portions will still overflow that.

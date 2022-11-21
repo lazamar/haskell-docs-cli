@@ -223,8 +223,10 @@ parseDeclaration moduleUrl (Html el) = do
       { Xml.elementNodes = Xml.elementNodes e <> [Xml.NodeContent " " ]
       }
 
-    removeTrailingSpaces e = res
-      where Xml.NodeElement res = head $ snd $ rm False [Xml.NodeElement e]
+    removeTrailingSpaces e =
+      case head $ snd $ rm False [Xml.NodeElement e] of
+        Xml.NodeElement res -> res
+        _ -> error "removeTrailingSpaces"
 
     rm True xs = (True, xs)
     rm False [] = (False, [])
@@ -240,8 +242,10 @@ parseDeclaration moduleUrl (Html el) = do
           then (True, e':xs)
           else (e':) <$> rm False xs
 
-    removeLeadingSpaces e = res
-      where Xml.NodeElement res = head $ snd $ rmLeading False [Xml.NodeElement e]
+    removeLeadingSpaces e =
+      case head $ snd $ rmLeading False [Xml.NodeElement e] of
+       Xml.NodeElement res  -> res
+       _ -> error "removeLeadingSpaces"
 
     rmLeading True xs = (True, xs)
     rmLeading False [] = (False, [])

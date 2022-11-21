@@ -22,16 +22,14 @@ import Docs.CLI.Evaluate
   )
 
 import Control.Concurrent.Async (withAsync)
-import Control.Applicative (many, (<|>), optional)
+import Control.Applicative (many, optional)
 import Control.Monad (void)
 import Data.Maybe (fromMaybe)
 import qualified Network.HTTP.Client.TLS as Http (tlsManagerSettings)
 import qualified Network.HTTP.Client as Http
 import qualified Options.Applicative as O
 import qualified Options.Applicative.Help.Pretty as OP
-import System.Environment (getEnv)
-import System.FilePath.Posix ((</>))
-import System.Directory (createDirectoryIfMissing, getHomeDirectory, getXdgDirectory, XdgDirectory(..))
+import System.Directory (createDirectoryIfMissing)
 import System.IO (hIsTerminalDevice, stdout)
 
 import Data.Cache as Cache
