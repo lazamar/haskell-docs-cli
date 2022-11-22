@@ -31,18 +31,18 @@ A full package documentation
     configure does that automatically.
      
   Properties
-    Versions [RSS]  [faq]
+    Versions [RSS]
       1.0.0.0, 1.0.0.3, 1.0.1.0, 1.0.1.1, 1.0.1.2, 1.1.0.0, 1.1.0.1, 1.1.0.2,
        1.2.0.0, 1.2.0.1, 1.2.1.0, 1.2.2.0, 1.2.2.1, 1.2.3.0, 1.2.3.1, 1.2.4.0,
        1.2.5.0, 1.2.5.1, 1.2.6.1, 1.2.6.2, 1.2.6.3, 1.2.7.0, 1.2.7.1, 1.3.0.0,
        1.3.0.1, 1.3.0.2, 1.3.1.0, 1.3.1.1, 1.3.1.2, 1.3.1.3, 1.3.1.4, 1.3.1.5,
        1.3.2.0, 1.3.2.1, 1.3.2.2, 1.3.3.0, 1.3.3.1, 1.3.3.2, 1.3.4.0, 1.3.5.0,
-       1.3.6.0, 1.3.6.1, 1.3.6.2 (info)
+       1.3.6.0, 1.3.6.1, 1.3.6.2, 1.3.7.0, 1.3.7.1, 1.3.8.0 (info)
     Change\xc2\xa0log (esc)
       changelog.md
     Dependencies
-      base (>=4.5 && <4.17), filepath (>=1.3 && <1.5), time (>=1.4 && <1.12),
-       unix (>=2.5.1 && <2.9), Win32 (>=2.2.2 && <2.13) [details]
+      base (>=4.11.0 && <4.18), filepath (>=1.4.100 && <1.5), time (>=1.8.0 && 
+      <1.13), unix (>=2.8.0 && <2.9), Win32 (>=2.13.3 && <2.14) [details]
     License
       BSD-3-Clause
     Author
@@ -56,17 +56,16 @@ A full package documentation
     Source\xc2\xa0repo (esc)
       head: git clone https://github.com/haskell/directory
     Uploaded
-      by Rufflewind at 2021-05-24T08:12:17Z
+      by Rufflewind at 2022-09-08T11:37:03Z
     Distributions
-      Arch:1.3.6.0, Fedora:1.3.6.0
+      Arch:1.3.6.2, Fedora:1.3.6.0
     Downloads
-      116277 total (1048 in the last 30 days)
+      130833 total (562 in the last 30 days)
      Rating
-      (no votes yet) [estimated by Bayesian average]
+      1.25 (votes: 1) [estimated by Bayesian average]
     Status
-      
       Docs available [build log]
-      Last success reported on 2021-05-24 [all 1 reports]
+      Last success reported on 2022-09-08 [all 1 reports]
 
 
 

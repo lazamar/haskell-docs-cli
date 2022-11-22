@@ -100,34 +100,34 @@ A class with code examples, different methods, and different headings
     #### Instances
     
     Instances details
-    -  Bifunctor Either 
+    -  Bifunctor Either  
         Since: base-4.8.0.0
         
-    -  Bifunctor (,) 
-        Since: base-4.8.0.0
-        
-    -  Bifunctor Arg 
+    -  Bifunctor Arg  
         Since: base-4.9.0.0
         
-    -  Bifunctor ((,,) x1) 
+    -  Bifunctor (,)  
         Since: base-4.8.0.0
         
-    -  Bifunctor (Const :: Type -> Type -> Type) 
+    -  Bifunctor (Const :: Type -> Type -> Type)  
         Since: base-4.8.0.0
         
-    -  Bifunctor (K1 i :: Type -> Type -> Type) 
+    -  Bifunctor ((,,) x1)  
+        Since: base-4.8.0.0
+        
+    -  Bifunctor (K1 i :: Type -> Type -> Type)  
         Since: base-4.9.0.0
         
-    -  Bifunctor ((,,,) x1 x2) 
+    -  Bifunctor ((,,,) x1 x2)  
         Since: base-4.8.0.0
         
-    -  Bifunctor ((,,,,) x1 x2 x3) 
+    -  Bifunctor ((,,,,) x1 x2 x3)  
         Since: base-4.8.0.0
         
-    -  Bifunctor ((,,,,,) x1 x2 x3 x4) 
+    -  Bifunctor ((,,,,,) x1 x2 x3 x4)  
         Since: base-4.8.0.0
         
-    -  Bifunctor ((,,,,,,) x1 x2 x3 x4 x5) 
+    -  Bifunctor ((,,,,,,) x1 x2 x3 x4 x5)  
         Since: base-4.8.0.0
         
     
