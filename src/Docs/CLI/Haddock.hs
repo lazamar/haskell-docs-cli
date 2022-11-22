@@ -277,7 +277,7 @@ parsePackageDocs url (HtmlPage root) = pageContent "packageDocs" url $ do
     subTitle = findM (is "small" . tag) (children heading)
 
     properties = do
-      wrapper <- findM (is "properties" . id_) (children content)
+      wrapper <- findRec (is "properties" . id_) content
              >>= findM (is "table" . tag) . children
              >>= findM (is "tbody" . tag) . children
       prop    <- filter (is "tr" . tag) (children wrapper)
@@ -494,7 +494,7 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
                             else bullet
                     in
                     const
-                    $ Just .  flip mappend P.hardline . P.vsep . map punctuate
+                    $ Just . flip mappend P.hardline . P.vsep . map punctuate
                     $ mapMaybe (unXMLElement stack)
                     $ joinSubsections (children e)
        -- don't show instance details
