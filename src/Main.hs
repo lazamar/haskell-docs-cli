@@ -68,7 +68,7 @@ cliOptions = O.info (O.helper <*> parser) $ mconcat
       , "Search modules, packages, types and functions by name or by approximate type signature."
       ]
     ]
-  , O.footerDoc $ Just $ moreInfoText <> OP.linebreak
+  , O.footerDoc $ Just $ moreInfoText <> OP.line
   ]
   where
     parser = do
