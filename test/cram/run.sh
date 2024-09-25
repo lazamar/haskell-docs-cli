@@ -6,7 +6,7 @@
 # This means that all files must be in the same directory as this runner.
 
 cd $TESTDIR/../..
-$(stack path --dist-dir 2>/dev/null)/build/hdc/hdc \
+$(cabal list-bin hdc) \
   --cache-dir $TESTDIR/cram-data \
   --cache unlimited\
   $@
