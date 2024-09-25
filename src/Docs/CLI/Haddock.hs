@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE GeneralisedNewtypeDeriving #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE TypeApplications #-}
 
 -- | Functions to parse and display Haddock HTML
 module Docs.CLI.Haddock
@@ -49,7 +50,8 @@ import qualified Data.Text as Text
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import qualified Text.PrettyPrint.ANSI.Leijen as P
+import qualified Prettyprinter as P
+import qualified Prettyprinter.Render.Terminal as P
 
 -- | An html element
 newtype Html = Html Xml.Element
@@ -386,6 +388,8 @@ sourceLinks (ModuleUrl murl) (HtmlPage root) = do
 -- Displaying Haddock's Html
 -- ================================
 
+type Doc = P.Doc P.AnsiStyle
+
 class IsHtml a where
   toElement :: a -> Xml.Element
 
@@ -396,7 +400,7 @@ instance IsHtml HtmlPage where
   toElement (HtmlPage p) = p
 
 -- | Render Haddock's Html
-prettyHtml :: IsHtml html => html -> P.Doc
+prettyHtml :: IsHtml html => html -> P.Doc P.AnsiStyle
 prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
   where
     unXMLElement stack e = style stack' e . fold =<< unXMLChildren stack' e
@@ -418,7 +422,7 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
     docwords f [] = P.fillCat (f [])
     docwords f (x:xs)
       | isSpace x = docwords (f . (P.space :)) $ dropWhile isSpace xs
-    docwords f xs = docwords (f . (P.text w :)) ys
+    docwords f xs = docwords (f . (P.pretty w :)) ys
       where (w, ys) = break isSpace xs
 
     -- | given an element, style its children
@@ -438,9 +442,9 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
       -- style
       "caption"           | underClass "subs fields" -> hide
                           | otherwise ->  Just
-      "name"              -> Just . P.dullgreen
-      "def"               -> Just . P.dullgreen
-      "fixity"            -> Just . P.black
+      "name"              -> Just . dullgreen
+      "def"               -> Just . dullgreen
+      "fixity"            -> Just . black
       -- invisible
       "link"              -> hide
       "selflink"          -> hide
@@ -452,19 +456,19 @@ prettyHtml = fromMaybe mempty . unXMLElement [] . toElement
 
 
     tagStyle stack e = case tag e of
-       "h1"      -> Just . linebreak . mappend (P.text "# ")
-       "h2"      -> Just . linebreak . mappend (P.text "## ")
-       "h3"      -> Just . linebreak . mappend (P.text "### ")
-       "h4"      -> Just . linebreak . mappend (P.text "#### ")
-       "h5"      -> Just . linebreak . mappend (P.text "##### ")
-       "h6"      -> Just . linebreak . mappend (P.text "###### ")
-       "tt"      -> Just . P.green
+       "h1"      -> Just . linebreak . mappend (P.pretty @Text "# ")
+       "h2"      -> Just . linebreak . mappend (P.pretty @Text "## ")
+       "h3"      -> Just . linebreak . mappend (P.pretty @Text "### ")
+       "h4"      -> Just . linebreak . mappend (P.pretty @Text "#### ")
+       "h5"      -> Just . linebreak . mappend (P.pretty @Text "##### ")
+       "h6"      -> Just . linebreak . mappend (P.pretty @Text "###### ")
+       "tt"      -> Just . green
        "pre"     -> const
                       $ Just . P.nest 2 . linebreak . P.vsep
-                      $ map (P.black . P.text . Text.unpack)
+                      $ map (black . P.pretty . Text.unpack)
                       $ Text.lines
                       $ innerText e
-       "code"    -> Just . P.black
+       "code"    -> Just . black
        "a"       -> Just . link
        "b"       -> Just
        "p"       -> Just . linebreak
@@ -606,14 +610,19 @@ transform overChildren test = go
 -- Pretty priting
 -- =================================
 
-numbered :: [P.Doc] -> [P.Doc]
-numbered = zipWith f [1..]
+numbered :: [Doc] -> [Doc]
+numbered = zipWith f ([1..] :: [Int])
   where
-    f n s = P.fill 2 (P.blue $ P.int n) P.<+> P.align s
+    f n s = P.fill 2 (blue $ P.pretty n) P.<+> P.align s
 
-bullet :: P.Doc -> P.Doc
-bullet doc = P.fill 2 (P.char '-') <> P.align doc
+bullet :: Doc -> Doc
+bullet doc = P.fill 2 (P.pretty '-') <> P.align doc
 
-link :: P.Doc -> P.Doc
-link = P.dullcyan
+link :: Doc -> Doc
+link = dullcyan
 
+dullgreen = P.annotate (P.colorDull P.Green)
+black = P.annotate (P.color P.Black)
+green = P.annotate (P.color P.Green)
+blue = P.annotate (P.color P.Blue)
+dullcyan = P.annotate (P.colorDull P.Cyan)

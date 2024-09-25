@@ -64,7 +64,8 @@ import qualified Network.HTTP.Types.Status as Http
 import qualified System.Console.Haskeline as CLI
 import qualified System.Process as Process
 import qualified System.Console.Terminal.Size as Terminal
-import qualified Text.PrettyPrint.ANSI.Leijen as P
+import qualified Prettyprinter as P
+import qualified Prettyprinter.Render.Terminal as P
 
 
 data ShellState = ShellState
@@ -116,6 +117,8 @@ newtype M a = M { runM :: ExceptT String (CLI.InputT (StateT ShellState IO)) a }
     , MonadThrow
     , MonadFail
     )
+
+type Doc = P.Doc P.AnsiStyle
 
 instance MonadState ShellState M where
   state f = M $ lift $ lift $ State.state f
@@ -272,7 +275,7 @@ groupBy f vs = go mempty vs
         Nothing -> (out, m)
         Just v -> (v:out, Map.delete key m)
 
-newtype CmdInfo = CmdInfo (String, Selection -> Cmd, P.Doc)
+newtype CmdInfo = CmdInfo (String, Selection -> Cmd, Doc)
 
 commandName :: CmdInfo -> String
 commandName (CmdInfo (name, _,_)) = takeWhile (not . isSpace) name
@@ -288,7 +291,7 @@ commands = map CmdInfo
         "" )
   , ("src <selector>",
         ViewDeclarationSource,
-        "View the source code of a function or type" <> P.linebreak
+        "View the source code of a function or type" <> P.line
         <> "Set the editor with the 'EDITOR' environment variable.")
   -- declaration
   , ("declaration <selector>",
@@ -365,17 +368,17 @@ interactive = do
       context <- State.gets sContext
       case context of
         ContextEmpty      -> return ()
-        ContextSearch t _ -> viewInTerminal $ P.text $ "search: " <> t
-        ContextModule m   -> viewInTerminal $ P.text $ "module: " <> mTitle m
-        ContextPackage p  -> viewInTerminal $ P.text $ "package: " <> pTitle p
+        ContextSearch t _ -> viewInTerminal $ P.pretty $ "search: " <> t
+        ContextModule m   -> viewInTerminal $ P.pretty $ "module: " <> mTitle m
+        ContextPackage p  -> viewInTerminal $ P.pretty $ "package: " <> pTitle p
 
-greeting :: P.Doc
+greeting :: Doc
 greeting = P.vcat
-  [ P.black "---- "
-      <> P.blue "haskell-docs-cli"
-      <> P.black " ----------------------------------------------------------"
-  , P.black "Say :help for help and :quit to exit"
-  , P.black "--------------------------------------------------------------------------------"
+  [ black "---- "
+      <> blue "haskell-docs-cli"
+      <> black " ----------------------------------------------------------"
+  , black "Say :help for help and :quit to exit"
+  , black "--------------------------------------------------------------------------------"
   ]
 
 evaluate :: String -> M ()
@@ -575,11 +578,11 @@ evaluateCmd cmd = State.gets sContext >>= \context -> case cmd of
       ContextModule m    -> withPackageForModule m (viewPackage view)
       ContextPackage p   -> viewPackage view p
 
-moreInfoText :: P.Doc
+moreInfoText :: Doc
 moreInfoText =
   "More info at <https://github.com/lazamar/haskell-docs-cli>"
 
-helpText :: P.Doc
+helpText :: Doc
 helpText = P.vcat $ concatMap addLine
   [ hcommands
   , hselectors
@@ -587,10 +590,10 @@ helpText = P.vcat $ concatMap addLine
   , moreInfoText
   ]
   where
-    addLine :: P.Doc -> [P.Doc]
+    addLine :: Doc -> [Doc]
     addLine line = [line, ""]
 
-    showItems :: [(String, P.Doc)] -> P.Doc
+    showItems :: [(String, Doc)] -> Doc
     showItems items =
       let maxNameWidth = maximum $ map (length . fst) items in
       P.indent 2 $ P.vcat
@@ -619,10 +622,14 @@ helpText = P.vcat $ concatMap addLine
           , (":module Data.List", "View module documentation for the 'Data.List' module")
           , (":src insertWith", "View the source for the first Hoogle result for 'insertWith'")
           , (":package 2"
-            , "View package documentation for the item with index 2 in the" P.</> "current context"
+            , "View package documentation for the item with index 2 in the"
+              <> P.softline
+              <> "current context"
             )
           , (":module /tak"
-            , "View module documentation for the first item with prefix" P.</> "'tak' in the current context"
+            , "View module documentation for the first item with prefix"
+              <> P.softline
+              <> "'tak' in the current context"
             )
           ]
       ]
@@ -717,7 +724,7 @@ withPackageForTargetGroup act tgroup = do
       . map f
       . toList
 
-    f :: Hoogle.Item -> (PackageUrl, P.Doc)
+    f :: Hoogle.Item -> (PackageUrl, Doc)
     f x = case x of
       Hoogle.Module m      -> (Hoogle.mPackageUrl m, viewItemPackage x)
       Hoogle.Declaration d -> (Hoogle.dPackageUrl d, viewItemPackage x)
@@ -734,13 +741,13 @@ withModuleForTargetGroup act tgroup = do
       . mapMaybe f
       . toList
 
-    f :: Hoogle.Item -> Maybe (ModuleUrl, P.Doc)
+    f :: Hoogle.Item -> Maybe (ModuleUrl, Doc)
     f x = case x of
       Hoogle.Module m      -> Just (Hoogle.mUrl m, viewItemPackageAndModule x)
       Hoogle.Declaration d -> Just (Hoogle.dModuleUrl d, viewItemPackageAndModule x)
       Hoogle.Package _     -> Nothing
 
-promptSelectOne :: [(a, P.Doc)] -> M a
+promptSelectOne :: [(a, Doc)] -> M a
 promptSelectOne = \case
   []      -> throwError "No matching options"
   [(x,_)] -> return x
@@ -787,7 +794,7 @@ viewDeclaration = viewInTerminalPaged . prettyDecl
 viewDeclarationWithLink :: Declaration -> M ()
 viewDeclarationWithLink decl = viewInTerminalPaged $ P.vcat
   [ prettyDecl decl
-  , Haddock.link $ P.text $ getUrl (dDeclUrl decl)
+  , Haddock.link $ P.pretty $ getUrl (dDeclUrl decl)
   ]
 
 viewModule :: View -> Module -> M ()
@@ -808,7 +815,7 @@ viewModuleDocs :: Module -> M ()
 viewModuleDocs (Module name minfo decls murl) =
   viewInTerminalPaged $ P.vsep $
     [ mainHeading name
-    , Haddock.link $  P.text $ getUrl murl
+    , Haddock.link $  P.pretty $ getUrl murl
     ]
     ++
     [ prettyHtml info | Just info <- [minfo] ]
@@ -825,14 +832,14 @@ viewPackage Documentation = viewPackageDocs
 viewPackageInterface :: Package -> M ()
 viewPackageInterface Package{..} =
   viewInTerminalPaged $ P.vsep $
-    mainHeading pTitle : numbered (P.text <$> pModules)
+    mainHeading pTitle : numbered (P.pretty <$> pModules)
 
 viewPackageDocs :: Package -> M ()
 viewPackageDocs Package{..} = viewInTerminalPaged $ P.vsep $
   [ mainHeading $ case pSubTitle of
       Nothing -> pTitle
       Just s -> pTitle <> ": " <> s
-  , Haddock.link $  P.text $ getUrl pUrl
+  , Haddock.link $  P.pretty $ getUrl pUrl
   , section "Description" (prettyHtml pDescription)
   ]
   ++
@@ -841,18 +848,18 @@ viewPackageDocs Package{..} = viewInTerminalPaged $ P.vsep $
   [ section "Properties" (P.vsep $ map viewProp pProperties) ]
   where
     section heading body =
-      P.text heading <> P.nest 2 (P.linebreak <> body)
+      P.pretty @String heading <> P.nest 2 (P.line <> body)
 
     viewProp (title, body) =
       section title (prettyHtml body)
 
 
-viewInTerminal :: P.Doc -> M ()
+viewInTerminal :: Doc -> M ()
 viewInTerminal doc = do
   noColours <- State.gets sNoColours
   printDoc noColours stdout doc
 
-viewInTerminalPaged :: P.Doc -> M ()
+viewInTerminalPaged :: Doc -> M ()
 viewInTerminalPaged doc = do
   noColours <- State.gets sNoColours
   withPager $ \handle -> printDoc noColours handle doc
@@ -889,14 +896,18 @@ withPager act = liftIO $
 maxWidth :: Int
 maxWidth = 80
 
-printDoc :: MonadIO m => Bool -> Handle -> P.Doc -> m ()
+printDoc :: MonadIO m => Bool -> Handle -> Doc -> m ()
 printDoc noColours handle doc = liftIO $ do
   width <- min maxWidth . maybe maxWidth Terminal.width <$> Terminal.size
-  P.displayIO handle $ P.renderSmart 1 width $
+  P.renderIO handle $ renderSmart 1 width $
     if noColours
-       then P.plain doc
+       then P.unAnnotate doc
        else doc
   hPutStrLn handle ""
+  where
+  renderSmart ribbonFraction pageWidth
+    = P.layoutSmart P.LayoutOptions
+        { P.layoutPageWidth = P.AvailablePerLine pageWidth (realToFrac ribbonFraction) }
 
 viewSource :: DeclUrl -> M ()
 viewSource durl = do
@@ -939,25 +950,25 @@ toDecl = \case
 -- Pretty printing
 -- ================================
 
-mainHeading :: String -> P.Doc
+mainHeading :: String -> Doc
 mainHeading str = P.vsep
   [ divider
-  , P.indent 2 $ P.text str
+  , P.indent 2 $ P.pretty str
   , divider
   ]
   where
-    divider = P.text $ replicate maxWidth '='
+    divider = P.pretty $ replicate maxWidth '='
 
-viewDescription :: Hoogle.Item -> P.Doc
+viewDescription :: Hoogle.Item -> Doc
 viewDescription = prettyHtml . Hoogle.description
 
-viewSummary :: TargetGroup -> P.Doc
+viewSummary :: TargetGroup -> Doc
 viewSummary tgroup = P.vsep
   [ viewDescription $ NonEmpty.head tgroup
   , viewPackageInfoList tgroup
   ]
 
-viewPackageInfoList :: TargetGroup -> P.Doc
+viewPackageInfoList :: TargetGroup -> Doc
 viewPackageInfoList
   = P.group
   . P.fillSep
@@ -965,25 +976,25 @@ viewPackageInfoList
   . map viewItemPackageAndModule
   . toList
 
-viewPackageName :: String -> P.Doc
-viewPackageName = P.magenta . P.text
+viewPackageName :: String -> Doc
+viewPackageName = magenta . P.pretty
 
-viewModuleName :: String -> P.Doc
-viewModuleName = P.black . P.text
+viewModuleName :: String -> Doc
+viewModuleName = black . P.pretty
 
-viewItemPackage :: Hoogle.Item -> P.Doc
+viewItemPackage :: Hoogle.Item -> Doc
 viewItemPackage = \case
   Hoogle.Declaration d -> viewPackageName (Hoogle.dPackage d)
   Hoogle.Module m      -> viewPackageName (Hoogle.mPackage m)
   Hoogle.Package p     -> viewPackageName (Hoogle.pTitle p)
 
-viewItemPackageAndModule :: Hoogle.Item -> P.Doc
+viewItemPackageAndModule :: Hoogle.Item -> Doc
 viewItemPackageAndModule item = case item of
   Hoogle.Declaration d -> viewItemPackage item P.<+> viewModuleName (Hoogle.dModule d)
   Hoogle.Module _      -> viewItemPackage item
   Hoogle.Package _     -> viewItemPackage item
 
-prettyDecl :: Declaration -> P.Doc
+prettyDecl :: Declaration -> Doc
 prettyDecl Declaration{..} =
   P.vsep $ map prettyHtml (dSignatureExpanded:dContent)
 
@@ -998,7 +1009,7 @@ viewTargetGroup tgroup = viewInTerminalPaged $ P.vsep
   , divider
   ]
   where
-    divider = P.black $ P.text $ replicate 50 '='
+    divider = black $ P.pretty $ replicate 50 '='
     representative = NonEmpty.head tgroup
     toUrl = \case
       Hoogle.Declaration d -> getUrl $ Hoogle.dUrl d
@@ -1008,7 +1019,7 @@ viewTargetGroup tgroup = viewInTerminalPaged $ P.vsep
       [ viewDescription representative
       , viewPackageInfoList tgroup
       , prettyHtml $ Hoogle.docs representative
-      ] ++ reverse (Haddock.link . P.text . toUrl <$> toList tgroup)
+      ] ++ reverse (Haddock.link . P.pretty . toUrl <$> toList tgroup)
 
 -- ================================
 -- Hoogle handling
@@ -1120,3 +1131,10 @@ fetch req = do
           "invalid proxy environment var: " <> show var <> ": " <> show val
         Http.ConnectionClosed -> "connection closed"
         Http.InvalidProxySettings _ -> "invalid proxy settings"
+
+dullgreen = P.annotate (P.colorDull P.Green)
+black = P.annotate (P.color P.Black)
+green = P.annotate (P.color P.Green)
+blue = P.annotate (P.color P.Blue)
+dullcyan = P.annotate (P.colorDull P.Cyan)
+magenta = P.annotate (P.color P.Magenta)
