@@ -64,11 +64,8 @@ jobs:
       - name: Build
         run: cabal build all
 
-      - name: Install cram
-        run: pip install cram
-
       - name: Run tests
-        run: cram --preserve-env ./test/cram
+        run: ./test/test.sh
 
       - name: Create package
         shell: bash

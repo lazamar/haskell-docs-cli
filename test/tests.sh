@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# This is a simple file for testing output of CLI commands.
+# Each command's output is saved in a file in version control and
+# tested against the live output of the command.
+#
+# Re-generating the files is straight-forward (see boolean flags in tests).
+# New test files can be generated using the same method.
+
+set -euo pipefail
+
 # script's directory
 DIR="$(dirname -- "${BASH_SOURCE[0]}")"
 
@@ -12,10 +21,12 @@ BINARY=$(cabal list-bin hdc)
 
 # override hdc binary
 function hdc() {
+  set +u
   $BINARY \
     --cache-dir $DIR/cache \
     --cache unlimited \
     "${@}"
+  set -u
 }
 
 # print coloured text
@@ -27,36 +38,46 @@ function color() {
   printf "${1}${2}${NC}"
 }
 
+COUNT=0
+FAILED=0
+
 function run_test() {
   UPDATE="${1}" # update output
   COMMAND="${2}"
   OUTPUT="${3}"
 
+  # Update output file
   if [ "$UPDATE" = true ] ; then
-    eval $COMMAND &>$OUTPUT
+    eval "$COMMAND" &>$OUTPUT
   fi
 
-  eval $COMMAND &>$TMP
-  diff $TMP $OUTPUT
-  DIFF_EXIT_CODE=$?
-  if [ $DIFF_EXIT_CODE -eq 0 ]
+  # Run the command
+  eval "$COMMAND" &>$TMP
+  diff $TMP $OUTPUT && R=true || R=false;
+
+  # Report the result
+  if [ $R = true ]
   then
     echo "-" $(color $GREEN "pass") $(color $GRAY "${COMMAND}")
   else
     echo "-" $(color $RED "failed") $(color $GRAY "${COMMAND}")
+    FAILED=$(($FAILED + 1))
   fi
+  COUNT=$(($COUNT + 1))
 }
 
 function cleanup() {
-  echo "Done"
   rm $TMP
-  exit 0
+  echo "Done. $COUNT tests. $FAILED failures."
+  if [ $FAILED -gt 0 ]; then
+    exit 1
+  fi
 }
 
 trap cleanup EXIT
 
-# Change boolean to True to update test output
-run_test false "hdc --help" \
+# Change the boolean flag to True to update test output
+run_test true "hdc --help" \
   "$DIR/outputs/test-0.output"
 run_test false "hdc :help" \
   "$DIR/outputs/test-1.output"
@@ -71,9 +92,7 @@ run_test false "hdc :mi System.Console.Haskeline" \
 run_test false "hdc :pd directory"  \
   "$DIR/outputs/test-6.output"
 run_test false "echo getInputLine | hdc"  \
-  "$DIR/outputs/test-7.output"
-
-
+ "$DIR/outputs/test-7.output"
 
 
 
