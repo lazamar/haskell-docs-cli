@@ -899,7 +899,7 @@ maxWidth = 80
 printDoc :: MonadIO m => Bool -> Handle -> Doc -> m ()
 printDoc noColours handle doc = liftIO $ do
   width <- min maxWidth . maybe maxWidth Terminal.width <$> Terminal.size
-  P.renderIO handle $ renderSmart 1 width $
+  P.renderIO handle $ P.removeTrailingWhitespace $ renderSmart 1 width $
     if noColours
        then P.unAnnotate doc
        else doc
