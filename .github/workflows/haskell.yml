@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest] # windows-latest, macos-latest
+        os: [ubuntu-latest, windows-latest, macos-latest]
         ghc-version: ['9.4.8']
 
     steps:
@@ -33,7 +33,6 @@ jobs:
 
       - name: Configure the build
         run: |
-          cabal update
           cabal configure --enable-tests --enable-benchmarks --disable-documentation
           cabal build all --dry-run
         # The last step generates dist-newstyle/cache/plan.json for the cache key.
