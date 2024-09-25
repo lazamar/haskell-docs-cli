@@ -1,0 +1,153 @@
+65 module System.Console.Pretty
+   pretty-terminal
+64 module Text.Blaze.Svg.Renderer.Pretty
+   blaze-svg
+63 class Pretty p
+   language-c Language.C.Pretty
+62 module Language.C.Pretty
+   language-c
+61 type family Pretty (api :: k) :: k
+   servant-docs Servant.Docs.Internal.Pretty
+60 module Servant.Docs.Internal.Pretty
+   servant-docs
+59 class Pretty a
+   Cabal-syntax Distribution.Pretty
+58 module Distribution.Pretty
+   Cabal-syntax
+57 module Distribution.Fields.Pretty
+   Cabal-syntax
+56 module Distribution.FieldGrammar.Pretty
+   Cabal-syntax
+55 class Pretty a
+   wl-pprint-text Text.PrettyPrint.Leijen.Text,
+   wl-pprint-text Text.PrettyPrint.Leijen.Text.Monadic,
+   wl-pprint Text.PrettyPrint.Leijen
+54 class Pretty a
+   haskell-src Language.Haskell.Pretty
+53 module Language.Haskell.Pretty
+   haskell-src
+52 module Data.ASN1.Pretty
+   asn1-types
+51 class Pretty a
+   HTF Test.Framework.Pretty
+50 module Test.Framework.Pretty
+   HTF
+49 module Text.XML.HaXml.Pretty
+   HaXml
+48 module Text.XML.HaXml.Html.Pretty
+   HaXml
+47 module Brick.Keybindings.Pretty
+   brick
+46 module Dhall.Pretty
+   dhall
+45 module Text.JSON.Pretty
+   json
+44 module Text.Blaze.Renderer.Pretty
+   blaze-markup
+43 module Text.Show.Pretty
+   pretty-show
+42 class Pretty a
+   haskell-src-exts Language.Haskell.Exts.Pretty
+41 module Language.Haskell.Exts.Pretty
+   haskell-src-exts
+40 module Data.Aeson.Encode.Pretty
+   aeson-pretty
+39 module Text.Blaze.Html.Renderer.Pretty
+   blaze-html
+38 module Data.Yaml.Pretty
+   yaml
+37 class Pretty a
+   pretty Text.PrettyPrint.Annotated.HughesPJClass,
+   pretty Text.PrettyPrint.HughesPJClass
+36 class Pretty a
+   optparse-applicative Options.Applicative.Help.Pretty,
+   prettyprinter Prettyprinter, prettyprinter Prettyprinter.Internal,
+   ansi-wl-pprint Text.PrettyPrint.ANSI.Leijen
+35 module Options.Applicative.Help.Pretty
+   optparse-applicative
+34 pretty :: SomeParsecParser -> CabalSpecVersion -> a -> Doc
+   cabal-gild CabalGild.Unstable.Type.SomeParsecParser
+33 pretty :: Doc -> Text
+   jira-wiki-markup Text.Jira.Printer
+32 pretty :: Pretty p => p -> Builder
+   ace ACE.Types.Pretty
+31 pretty :: Options -> Bool
+   unjson Data.Unjson
+30 pretty :: (Ord a, Show a, Num prob, Ord prob) => (prob -> String) -> T prob a
+    -> String
+   probability Numeric.Probability.Distribution
+29 pretty :: (Pretty a, Show a) => a -> StyleDoc
+   rio-prettyprint RIO.PrettyPrint,
+   rio-prettyprint Text.PrettyPrint.Leijen.Extended
+28 pretty :: Pretty a => a -> StyleDoc
+   stack Stack.Prelude, rio-prettyprint RIO.PrettyPrint,
+   rio-prettyprint Text.PrettyPrint.Leijen.Extended
+27 pretty :: Formatter
+   graphql Language.GraphQL.AST.Encoder
+26 pretty :: HasReportOptsNoUpdate c => Lens' c Bool
+   hledger Hledger.Cli.Script
+25 pretty :: Pretty a => a -> String
+   hackage-security Hackage.Security.Util.Pretty, kleene Kleene.Internal.Pretty
+24 pretty :: Value a -> Doc
+   config-value Config
+23 pretty :: (Pretty a, Show a) => a -> Doc b
+   wl-pprint-annotated Text.PrettyPrint.Annotated.WL
+22 pretty :: Pretty a => a -> Doc b
+   wl-pprint-annotated Text.PrettyPrint.Annotated.WL
+21 pretty :: (Applicative f, Pretty a) => a -> f Doc
+   clash-lib Data.Text.Prettyprint.Doc.Extra
+20 pretty :: (Applicative m, Pretty a) => a -> m Doc
+   Agda Agda.TypeChecking.Pretty
+19 pretty :: Pretty a => (Nat, Bool, JSModuleStyle) -> a -> Doc
+   Agda Agda.Compiler.JS.Pretty
+18 pretty :: Int -> Doc -> String
+   mainland-pretty Text.PrettyPrint.Mainland
+17 pretty :: HasReportOptsNoUpdate c_a45GH => Lens' c_a45GH Bool
+   hledger-lib Hledger.Reports.ReportOptions
+16 pretty :: Config
+   clay Clay, clay Clay.Render
+15 pretty :: Pretty p => p -> Doc
+   language-c Language.C.Pretty
+14 pretty :: (Out a) => a -> String
+   GenericPretty Text.PrettyPrint.GenericPretty
+13 pretty :: TOML -> Text
+   tomland Toml.Type.Printer
+12 pretty :: (Buildable a, FromBuilder b) => a -> b
+   fmt Fmt, fmt Fmt.Internal.Core
+11 pretty :: Proxy api -> Proxy (Pretty api)
+   servant-docs Servant.Docs, servant-docs Servant.Docs.Internal.Pretty
+10 pretty :: Pretty a => a -> Doc
+   wl-pprint-text Text.PrettyPrint.Leijen.Text,
+   wl-pprint-text Text.PrettyPrint.Leijen.Text.Monadic,
+   Cabal-syntax Distribution.Pretty, wl-pprint Text.PrettyPrint.Leijen,
+   Agda Agda.Syntax.Common.Pretty,
+   cabal-install Distribution.Client.Compat.Prelude,
+   language-python Language.Python.Common.Pretty,
+   language-java Language.Java.Pretty, BNFC BNFC.PrettyPrint,
+   language-c99 Language.C99.Pretty
+9  pretty :: PrettyType -> [ASN1] -> String
+   asn1-types Data.ASN1.Pretty
+8  pretty :: Pretty a => a -> Doc
+   HTF Test.Framework.Pretty
+7  pretty :: Pretty a => a -> Text
+   dhall Dhall.Core
+6  pretty :: Show a => a -> String
+   haskell-src-meta Language.Haskell.Meta.Utils
+5  pretty :: (Pretty a, Show a) => a -> Doc ann
+   prettyprinter Prettyprinter, prettyprinter Prettyprinter.Internal
+4  pretty :: JsRender doc => Bool -> JStat -> doc
+   ghc GHC.StgToJS.Linker.Opt, ghc-lib GHC.StgToJS.Linker.Opt
+3  pretty :: Config -> Value -> YamlBuilder
+   yaml Data.Yaml.Pretty
+2  package pretty
+   package pretty
+1  pretty :: Pretty a => a -> Doc ann
+   optparse-applicative Options.Applicative.Help.Pretty,
+   prettyprinter Prettyprinter, prettyprinter Prettyprinter.Internal,
+   ansi-wl-pprint Text.PrettyPrint.ANSI.Leijen, core-program Core.System.Pretty,
+   nvim-hs Neovim, nvim-hs Neovim.Classes,
+   prettyprinter-compat-ansi-wl-pprint Text.PrettyPrint.ANSI.Leijen,
+   prettyprinter-combinators Prettyprinter.Combinators,
+   prettyprinter-combinators Prettyprinter.Generics,
+   prettyprinter-combinators Prettyprinter.Show,
+   prettyprinter-compat-wl-pprint Text.PrettyPrint.Leijen

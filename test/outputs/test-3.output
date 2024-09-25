@@ -1,0 +1,155 @@
+72 module Control.Concurrent.STM.Map
+   ttrie
+71 module Data.Trie.Map
+   trie-simple
+70 class Map set
+   reactive-midyim Reactive.Banana.MIDI.KeySet
+69 module Control.Monad.Trans.Memo.Map
+   monad-memo
+68 module Data.Loc.Internal.Map
+   loc
+67 data Map ph k v
+   justified-containers Data.Map.Justified
+66 newtype Map a b
+   cql Database.CQL.Protocol, cql Database.CQL.Protocol.Internal
+65 Map :: [(Literal, Literal)] -> Literal
+   codec-beam Codec.Beam
+64 data Map
+   bytehash Data.Bytes.HashMap.Word
+63 data Map v
+   bytehash Data.Bytes.HashMap
+62 Map :: Element "map" '[Flow, Phrasing, Palpable] (Flow :|: (Phrasing :|:
+   Palpable)) (NameA & '[])
+   type-of-html Html.Type
+61 module Synthesizer.Dimensional.Map
+   synthesizer-dimensional
+60 module Data.RangeSet.Map
+   range-set-list
+59 module Cursor.Simple.Map
+   cursor
+58 module Cursor.Map
+   cursor
+57 data Map k v
+   ctrie Control.Concurrent.Map
+56 module Control.Concurrent.Map
+   ctrie
+55 package Map
+   package Map
+54 module TOML.Utils.Map
+   toml-reader
+53 data Map g k a
+   net-mqtt Data.Map.Strict.Expiring
+52 Map :: EDNMap -> Value
+   hedn Data.EDN, hedn Data.EDN.AST.Types.Value
+51 module Data.Express.Map
+   express
+50 Map :: ExecutionHint
+   bloodhound Database.Bloodhound.Common.Types
+49 data () => Map k a
+   stack Stack.Prelude
+48 module Data.Monoid.Map
+   stack
+47 data Map c
+   apecs Apecs, apecs Apecs.Stores
+46 Map :: ((a -> r) -> b -> r) -> Map r b a
+   algebra Numeric.Map
+45 newtype Map r b a
+   algebra Numeric.Map
+44 module Numeric.Map
+   algebra
+43 module Network.Wai.Session.Map
+   wai-session
+42 Map :: (a -> b) -> (b -> a) -> (b :-> c) -> a :-> c
+   hedgehog-fn Hedgehog.Function.Internal
+41 data Map κ ν
+   core-data Core.Data.Structures
+40 module Data.Bijection.Map
+   bimaps
+39 module Rebase.Data.Map
+   rebase
+38 type family Map f x
+   opaleye Opaleye.Internal.Map
+37 module Opaleye.Internal.Map
+   opaleye
+36 Map :: ReadSchema -> ReadSchema
+   avro Data.Avro.Schema.ReadSchema
+35 Map :: HashMap Text Value -> Value
+   avro Data.Avro.Encoding.FromAvro
+34 Map :: Schema -> Schema
+   avro Data.Avro, avro Data.Avro.Schema.Schema,
+   language-avro Language.Avro.Types
+33 type family Map f xs
+   defun-core DeFun.List
+32 module Data.GenValidity.Map
+   genvalidity-containers
+31 module Data.Validity.Map
+   validity-containers
+30 data Map measA vertA horizA measB vertB horizB height width
+   lapack Numeric.LAPACK.Matrix.Extent
+29 data Map k v
+   hashmap Data.HashMap
+28 type family Map (f :: Function k l -> Type) (as :: [k]) :: [l]
+   Agda Agda.Utils.TypeLevel
+27 module Agda.Utils.Map
+   Agda
+26 data Map k a
+   ghc-lib-parser Language.Haskell.TH.Lib.Map, net-mqtt Data.Map.Strict.Decaying
+25 module Language.Haskell.TH.Lib.Map
+   ghc-lib-parser
+24 module Data.Parameterized.Map
+   parameterized-utils
+23 Map :: [(a, b)] -> Map a b
+   leancheck Test.LeanCheck.Utils.Types, cql Database.CQL.Protocol,
+   cql Database.CQL.Protocol.Internal
+22 newtype Map a b
+   leancheck Test.LeanCheck.Utils.Types
+21 type family Map (f :: a -> b) (r :: Row a) :: Row b
+   row-types Data.Row.Internal, row-types Data.Row.Records,
+   row-types Data.Row.Variants
+20 module Toml.Codec.Combinator.Map
+   tomland
+19 data Map k a
+   basic-prelude CorePrelude, bimaps Data.Bijection.Map
+18 type family Map (a1 :: a ~> b) (a2 :: [a]) :: [b]
+   singletons-base Data.List.Singletons, singletons-base Prelude.Singletons
+17 type family Map (a1 :: a ~> b) (a2 :: NonEmpty a) :: NonEmpty b
+   singletons-base Data.List.NonEmpty.Singletons
+16 data Map
+   first-class-families Fcf, first-class-families Fcf.Class.Functor,
+   first-class-families Fcf.Classes
+15 data Map key value
+   stm-containers StmContainers.Map
+14 module StmContainers.Map
+   stm-containers
+13 module Data.Dependent.Map
+   dependent-map
+12 module Data.NonEmpty.Map
+   non-empty
+11 module Data.Map
+   rerebase
+10 data Map k v
+   dhall Dhall.Map
+9  module Dhall.Map
+   dhall
+8  module Data.Convertible.Instances.Map
+   convertible
+7  module RIO.Map
+   rio
+6  module Relude.Extra.Map
+   relude
+5  data () => Map k a
+   relude Relude.Container.Reexport, Cabal-syntax Distribution.Compat.Prelude,
+   universum Universum.Container.Reexport, rebase Rebase.Prelude,
+   cabal-install-solver Distribution.Solver.Compat.Prelude
+4  data Map k v
+   uniplate Data.Generics.Uniplate.Data.Instances
+3  module GHC.Types.Unique.Map
+   ghc, ghc-lib-parser
+2  data Map k a
+   containers Data.Map.Internal, containers Data.Map.Lazy,
+   containers Data.Map.Strict, containers Data.Map.Strict.Internal,
+   protolude Protolude, rio RIO.Map, rio RIO.Prelude.Types,
+   classy-prelude ClassyPrelude, ihaskell IHaskellPrelude,
+   loc Data.Loc.Internal.Prelude
+1  module Data.Map
+   containers

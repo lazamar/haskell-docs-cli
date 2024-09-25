@@ -1,0 +1,10 @@
+---- haskell-docs-cli ----------------------------------------------------------
+Say :help for help and :quit to exit
+--------------------------------------------------------------------------------
+> 2  getInputLineWithInitial :: (MonadIO m, MonadMask m) => String -> (String,
+   String) -> InputT m (Maybe String)
+   haskeline System.Console.Haskeline
+1  getInputLine :: (MonadIO m, MonadMask m) => String -> InputT m (Maybe String)
+   haskeline System.Console.Haskeline
+search: getInputLine
+> 
