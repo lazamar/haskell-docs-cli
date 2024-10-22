@@ -1,7 +1,7 @@
 # haskell-docs-cli
 
 This package allows you to perform [Hoogle](https://hoogle.haskell.org/) searches and to
-navigate [Hackage](https://hackage.haskell.org/) documentation from the command
+navigate [Hackage](https://hackage.haskell.org/) documentation and source code from the command
 line.
 
 Staying in the command line avoids switching to and from the browser, makes it
