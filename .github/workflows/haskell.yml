@@ -74,10 +74,10 @@ jobs:
           binary=$(cabal list-bin hdc)
           cp "${binary}" haskell-docs-cli/
           cp -r README.md haskell-docs-cli/
-          tar cvf haskell-docs-cli-${{ matrix.os }}.tar haskell-docs-cli
+          tar cvf haskell-docs-cli-${{ runner.arch }}-${{ runner.os }}.tar haskell-docs-cli
 
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: haskell-docs-cli-${{ matrix.os }}.tar
+          files: haskell-docs-cli-${{ runner.arch }}-${{ runner.os }}.tar
