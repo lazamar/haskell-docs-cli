@@ -72,11 +72,12 @@ jobs:
         run: |
           mkdir package
           binary=$(cabal list-bin hdc)
-          cp "${binary}" package/hdc
+          cp "${binary}" package/
           cp -r README.md package/
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: haskell-docs-cli-${{ runner.os }}
-          path: package
+          files: |
+            package
