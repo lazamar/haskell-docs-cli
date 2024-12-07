@@ -70,14 +70,14 @@ jobs:
       - name: Create package
         shell: bash
         run: |
-          mkdir package
+          mkdir haskell-docs-cli
           binary=$(cabal list-bin hdc)
-          cp "${binary}" package/
-          cp -r README.md package/
+          cp "${binary}" haskell-docs-cli/
+          cp -r README.md haskell-docs-cli/
+          tar cvf haskell-docs-cli-${{ matrix.os }}.tar haskell-docs-cli
 
       - name: Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: |
-            package/*
+          files: haskell-docs-cli-${{ matrix.os }}.tar
