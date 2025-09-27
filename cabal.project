@@ -1,2 +1,6 @@
-with-compiler: ghc-9.4.8
+with-compiler: ghc-9.12.2
+
+constraints: zlib +bundled-c-zlib -pkg-config +non-blocking-ffi,
+  -- make generated freeze files include a version constraint for zlib-clib, as well as these flag constraints (choose bundled zlib to avoid system dependencies; improves build reproducibility)
+
 packages: .
