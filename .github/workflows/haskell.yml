@@ -13,6 +13,9 @@ jobs:
   build:
     name: GHC ${{ matrix.ghc-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -68,7 +71,6 @@ jobs:
         run: ./test/test.sh
 
       - name: Create package
-        shell: bash
         run: |
           mkdir haskell-docs-cli
           binary=$(cabal list-bin hdc)
