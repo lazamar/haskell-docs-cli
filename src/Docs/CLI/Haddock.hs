@@ -226,8 +226,8 @@ parseDeclaration moduleUrl (Html el) = do
       }
 
     removeTrailingSpaces e =
-      case head $ snd $ rm False [Xml.NodeElement e] of
-        Xml.NodeElement res -> res
+      case snd $ rm False [Xml.NodeElement e] of
+        Xml.NodeElement res : _ -> res
         _ -> error "removeTrailingSpaces"
 
     rm True xs = (True, xs)
@@ -245,8 +245,8 @@ parseDeclaration moduleUrl (Html el) = do
           else (e':) <$> rm False xs
 
     removeLeadingSpaces e =
-      case head $ snd $ rmLeading False [Xml.NodeElement e] of
-       Xml.NodeElement res  -> res
+      case snd $ rmLeading False [Xml.NodeElement e] of
+       Xml.NodeElement res : _  -> res
        _ -> error "removeLeadingSpaces"
 
     rmLeading True xs = (True, xs)
@@ -380,7 +380,7 @@ sourceLinks (ModuleUrl murl) (HtmlPage root) = do
   anchor <- foldMap anchors (signature : constructors)
   return (anchor, surl)
   where
-    parent = reverse . tail . dropWhile (/= '/') . reverse
+    parent = reverse . dropWhile (=='/') . snd . break (=='/') . reverse
 
     toSourceUrl relativeUrl = parent murl <> "/" <> Text.unpack relativeUrl
 
