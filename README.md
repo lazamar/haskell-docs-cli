@@ -26,15 +26,19 @@ Say :help for help and :quit to exit
 
 ### Install from source
 
-Download the project and run `stack install`.
+Download the project and run `cabal install`.
 
 It will make the `hdc` executable available in your path.
 
-```
+```sh
 git clone https://github.com/lazamar/haskell-docs-cli.git
 cd haskell-docs-cli
-stack install
+cabal install
 ```
+
+### Install from pre-built binaries
+
+Built binaries for macOS, linux and Windows can be downloaded from https://github.com/lazamar/haskell-docs-cli/releases.
 
 ## Functionalities
 
