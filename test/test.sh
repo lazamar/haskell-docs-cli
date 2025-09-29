@@ -6,6 +6,8 @@
 #
 # Re-generating the files is straight-forward (see boolean flags in tests).
 # New test files can be generated using the same method.
+#
+# To debug the script, add a line `set -x` to enable execution tracing.
 
 set -euo pipefail
 
@@ -46,13 +48,22 @@ function run_test() {
   COMMAND="${2}"
   OUTPUT="${3}"
 
+  # run `hdc` in subprocess with `set +x`
+  # (= tracing unconditionally disabled so it won't interfere with stderr)
+
   # Update output file
   if [ "$UPDATE" = true ] ; then
+    (
+    set +x
     eval "$COMMAND" &>$OUTPUT
+    )
   fi
 
   # Run the command
+  (
+  set +x
   eval "$COMMAND" &>$TMP
+  )
 
   # Compare output (actual in file $TMP vs. expected in file $OUTPUT)
   diff $TMP $OUTPUT && R=true || R=false;
