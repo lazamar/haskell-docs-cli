@@ -53,6 +53,8 @@ function run_test() {
 
   # Run the command
   eval "$COMMAND" &>$TMP
+
+  # Compare output (actual in file $TMP vs. expected in file $OUTPUT)
   diff $TMP $OUTPUT && R=true || R=false;
 
   # Report the result
