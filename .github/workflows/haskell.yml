@@ -17,6 +17,9 @@ jobs:
   build:
     name: GHC ${{ matrix.ghc-version }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -31,8 +34,8 @@ jobs:
         id: setup
         with:
           ghc-version: ${{ matrix.ghc-version }}
+          cabal-version: '3.14.2.0'
           # Defaults, added for clarity:
-          cabal-version: 'latest'
           cabal-update: true
 
       - name: Configure the build
@@ -72,7 +75,6 @@ jobs:
         run: ./test/test.sh
 
       - name: Create package
-        shell: bash
         run: |
           mkdir haskell-docs-cli
           binary=$(cabal list-bin hdc)

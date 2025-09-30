@@ -6,6 +6,8 @@
 #
 # Re-generating the files is straight-forward (see boolean flags in tests).
 # New test files can be generated using the same method.
+#
+# To debug the script, add a line `set -x` to enable execution tracing.
 
 set -euo pipefail
 
@@ -29,6 +31,13 @@ function hdc() {
   set -u
 }
 
+function diff_() {
+  diff --ignore-space-change "$@"
+  }
+  # about `--ignore-space-change`:
+  # - to make tests pass on Windows CI (a subtle hdc bug causes output on Windows to sometimes have extra Carriage Return characters at the end of the line)
+  # - supported by `diff` on all CI platforms: linux/ubuntu (GNU diffutils), Windows (GNU diffutils through MSYS2 through Git Bash), macOS (BSD diff)
+
 # print coloured text
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -46,14 +55,25 @@ function run_test() {
   COMMAND="${2}"
   OUTPUT="${3}"
 
+  # run `hdc` in subprocess with `set +x`
+  # (= tracing unconditionally disabled so it won't interfere with stderr)
+
   # Update output file
   if [ "$UPDATE" = true ] ; then
+    (
+    set +x
     eval "$COMMAND" &>$OUTPUT
+    )
   fi
 
   # Run the command
+  (
+  set +x
   eval "$COMMAND" &>$TMP
-  diff $TMP $OUTPUT && R=true || R=false;
+  )
+
+  # Compare output (actual in file $TMP vs. expected in file $OUTPUT)
+  diff_ $TMP $OUTPUT && R=true || R=false;
 
   # Report the result
   if [ $R = true ]
@@ -75,6 +95,9 @@ function cleanup() {
 }
 
 trap cleanup EXIT
+
+# Early error if used diff invocation unsupported on current platform:
+diff_ /dev/null /dev/null || { echo 'FAILED (diff self-test)'; exit 1; }
 
 # Change the boolean flag to True to update test output
 run_test true "hdc --help" \
