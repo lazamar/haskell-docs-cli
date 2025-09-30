@@ -1,8 +1,12 @@
 name: Haskell CI
+
 on:
-  push:
+  pull_request:
+    types: [opened, reopened, synchronize]
     paths-ignore:
       - '**.md'
+  push:
+    branches: [main]
 
 # only one build per branch
 concurrency:
